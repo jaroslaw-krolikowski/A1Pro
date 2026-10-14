@@ -18,6 +18,9 @@ CONF_DEVICE_NAME: Final = "device_name"
 CONF_PRODUCT_MODEL: Final = "product_model"
 CONF_PRODUCT_NAME: Final = "product_name"
 CONF_BLE_UNLOCK_CHECK: Final = "ble_unlock_check"
+# Optional devices.json block with Raykube A1 Pro overrides (DP ids, volume
+# levels, auto-lock range). See docs/raykube-a1-pro.md.
+CONF_RAYKUBE: Final = "raykube"
 # Opt-in persistent BLE session for battery locks (e.g. Raykube hc7n0urm).
 # Default off: connect on demand + advertisement refresh. On: keepalive like rlyxv7pe.
 CONF_KEEP_CONNECTED: Final = "keep_connected"

@@ -1,7 +1,7 @@
 """The Tuya BLE integration."""
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import logging
 
@@ -23,6 +23,7 @@ from .const import (
     FINGERBOT_MODE_SWITCH,
 )
 from .devices import TuyaBLEData, TuyaBLEEntity, TuyaBLEProductInfo
+from .raykube import get_raykube_config
 from .tuya_ble import TuyaBLEDataPointType, TuyaBLEDevice
 
 _LOGGER = logging.getLogger(__name__)
@@ -339,7 +340,7 @@ class TuyaBLESelect(TuyaBLEEntity, SelectEntity):
 
     def _is_raykube_sticky_select(self) -> bool:
         if self._device.product_id == "hc7n0urm":
-            return self._mapping.dp_id in (31, 48)
+            return self._mapping.description.key in ("beep_volume", "lock_direction")
         if self._device.product_id == "ikphogdj":
             return self._mapping.dp_id in (31, 48)
         return False
@@ -404,7 +405,21 @@ async def async_setup_entry(
     data: TuyaBLEData = hass.data[DOMAIN][entry.entry_id]
     mappings = get_mapping_by_device(data.device)
     entities: list[TuyaBLESelect] = []
+    raykube_config = get_raykube_config(data.device)
     for mapping in mappings:
+        if raykube_config is not None and mapping.description.key == "beep_volume":
+            # Volume levels and DP are configurable per lock in devices.json.
+            dp_id = raykube_config.dp("beep_volume")
+            if not dp_id:
+                continue
+            mapping = replace(
+                mapping,
+                dp_id=dp_id,
+                description=replace(
+                    mapping.description,
+                    options=raykube_config.beep_volume_options,
+                ),
+            )
         if (
             mapping.force_add or
             data.device.datapoints.has_id(mapping.dp_id, mapping.dp_type)

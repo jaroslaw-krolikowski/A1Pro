@@ -30,13 +30,46 @@
       }
     }
   },
+  "services": {
+    "set_datapoint": {
+      "name": "Set datapoint",
+      "description": "Write a raw Tuya datapoint to the device (advanced).",
+      "fields": {
+        "device_id": {
+          "name": "Device",
+          "description": "Tuya Local BLE device."
+        },
+        "dp_id": {
+          "name": "DP id",
+          "description": "Datapoint number."
+        },
+        "type": {
+          "name": "Type",
+          "description": "Datapoint type: bool, value, enum (index), string or raw (hex)."
+        },
+        "value": {
+          "name": "Value",
+          "description": "Value to write, e.g. true, 30, 2 or 0a0b."
+        }
+      }
+    }
+  },
   "entity": {
       "button": {
         "push": {
           "name": "Push"
+        },
+        "calibrate": {
+          "name": "Calibrate"
+        },
+        "refresh_status": {
+          "name": "Refresh status"
         }
       },
       "number": {
+        "auto_lock_time": {
+          "name": "Auto lock delay"
+        },
         "brightness": {
           "name": "Brightness"
         },
@@ -100,6 +133,9 @@
         }
       },
       "sensor": {
+        "datapoints": {
+          "name": "Datapoints"
+        },
         "battery": {
           "name": "Battery"
         },
@@ -172,6 +208,12 @@
       "switch": {
         "automatic_lock": {
           "name": "Auto Lock"
+        },
+        "mute": {
+          "name": "Mute"
+        },
+        "arming": {
+          "name": "Arming mode"
         },
         "programming_mode": {
           "name": "Programming Mode" 

@@ -1,0 +1,31 @@
+set_datapoint:
+  fields:
+    device_id:
+      required: true
+      selector:
+        device:
+          integration: tuya_local_ble
+    dp_id:
+      required: true
+      example: 11
+      selector:
+        number:
+          min: 1
+          max: 255
+          mode: box
+    type:
+      required: true
+      default: bool
+      selector:
+        select:
+          options:
+            - bool
+            - value
+            - enum
+            - string
+            - raw
+    value:
+      required: true
+      example: "true"
+      selector:
+        text:

@@ -26,6 +26,7 @@ from .const import (
     CONF_DEVICE_NAME,
     CONF_PRODUCT_NAME,
     CONF_BLE_UNLOCK_CHECK,
+    CONF_RAYKUBE,
     DOMAIN,
 )
 
@@ -95,6 +96,7 @@ class HASSTuyaBLEDeviceManager(AbstaractTuyaBLEDeviceManager):
                 credentials.get(CONF_PRODUCT_MODEL, ""),
                 credentials.get(CONF_PRODUCT_NAME, ""),
                 credentials.get(CONF_BLE_UNLOCK_CHECK, ""),
+                credentials.get(CONF_RAYKUBE) or None,
             )
             _LOGGER.debug("Retrieved: %s", result)
 

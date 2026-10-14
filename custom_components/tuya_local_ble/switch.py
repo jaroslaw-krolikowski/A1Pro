@@ -18,6 +18,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import DOMAIN
 from .devices import TuyaBLEData, TuyaBLEEntity, TuyaBLEProductInfo
+from .raykube import RaykubeConfig, get_raykube_config
 from .tuya_ble import TuyaBLEDataPointType, TuyaBLEDevice
 
 _LOGGER = logging.getLogger(__name__)
@@ -478,6 +479,159 @@ class TuyaBLESwitch(TuyaBLEEntity, SwitchEntity):
         return result
 
 
+class TuyaBLERaykubeBoolSwitch(TuyaBLEEntity, SwitchEntity):
+    """Raykube setting backed by a boolean DP (auto-lock, arming)."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        coordinator: DataUpdateCoordinator,
+        device: TuyaBLEDevice,
+        product: TuyaBLEProductInfo,
+        description: SwitchEntityDescription,
+        dp_id: int,
+        config: RaykubeConfig,
+    ) -> None:
+        super().__init__(hass, coordinator, device, product, description)
+        self._dp_id = dp_id
+        self._config = config
+
+    @property
+    def available(self) -> bool:
+        """Sleepy locks connect on demand, so settings stay available."""
+        return self._config.sleepy or super().available
+
+    @property
+    def is_on(self) -> bool | None:
+        datapoint = self._device.datapoints[self._dp_id]
+        if datapoint is None:
+            return None
+        return bool(datapoint.value)
+
+    async def _async_set(self, value: bool) -> None:
+        datapoint = self._device.datapoints.get_or_create(
+            self._dp_id, TuyaBLEDataPointType.DT_BOOL, value
+        )
+        await datapoint.set_value(value)
+        self._coordinator.async_update_listeners()
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self._async_set(True)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self._async_set(False)
+
+
+class TuyaBLERaykubeMuteSwitch(TuyaBLEEntity, SwitchEntity):
+    """Mute on/off on top of the beep_volume enum DP.
+
+    Unmuting restores the last non-mute volume level seen on the lock, or
+    the configured `unmute_level`.
+    """
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        coordinator: DataUpdateCoordinator,
+        device: TuyaBLEDevice,
+        product: TuyaBLEProductInfo,
+        dp_id: int,
+        config: RaykubeConfig,
+    ) -> None:
+        super().__init__(
+            hass,
+            coordinator,
+            device,
+            product,
+            SwitchEntityDescription(
+                key="mute",
+                icon="mdi:volume-off",
+                entity_category=EntityCategory.CONFIG,
+            ),
+        )
+        self._dp_id = dp_id
+        self._config = config
+        self._last_level = config.beep_volume_options.index(config.unmute_level)
+
+    @property
+    def available(self) -> bool:
+        return self._config.sleepy or super().available
+
+    @property
+    def is_on(self) -> bool | None:
+        datapoint = self._device.datapoints[self._dp_id]
+        if datapoint is None:
+            return None
+        try:
+            level = int(datapoint.value)
+        except (TypeError, ValueError):
+            return None
+        if 0 < level < len(self._config.beep_volume_options):
+            self._last_level = level
+        return level == 0
+
+    async def _async_set_level(self, level: int) -> None:
+        datapoint = self._device.datapoints.get_or_create(
+            self._dp_id, TuyaBLEDataPointType.DT_ENUM, level
+        )
+        await datapoint.set_value(level)
+        self._coordinator.async_update_listeners()
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self._async_set_level(0)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self._async_set_level(self._last_level)
+
+
+def get_raykube_switches(
+    hass: HomeAssistant, data: TuyaBLEData
+) -> list[SwitchEntity]:
+    config = get_raykube_config(data.device)
+    if config is None:
+        return []
+    entities: list[SwitchEntity] = []
+    if dp_id := config.dp("automatic_lock"):
+        entities.append(
+            TuyaBLERaykubeBoolSwitch(
+                hass,
+                data.coordinator,
+                data.device,
+                data.product,
+                SwitchEntityDescription(
+                    key="automatic_lock",
+                    icon="mdi:lock-clock",
+                    entity_category=EntityCategory.CONFIG,
+                ),
+                dp_id,
+                config,
+            )
+        )
+    if dp_id := config.dp("arming"):
+        entities.append(
+            TuyaBLERaykubeBoolSwitch(
+                hass,
+                data.coordinator,
+                data.device,
+                data.product,
+                SwitchEntityDescription(
+                    key="arming",
+                    icon="mdi:shield-lock",
+                    entity_category=EntityCategory.CONFIG,
+                ),
+                dp_id,
+                config,
+            )
+        )
+    if dp_id := config.dp("beep_volume"):
+        entities.append(
+            TuyaBLERaykubeMuteSwitch(
+                hass, data.coordinator, data.device, data.product, dp_id, config
+            )
+        )
+    return entities
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -486,7 +640,7 @@ async def async_setup_entry(
     """Set up the Tuya BLE sensors."""
     data: TuyaBLEData = hass.data[DOMAIN][entry.entry_id]
     mappings = get_mapping_by_device(data.device)
-    entities: list[TuyaBLESwitch] = []
+    entities: list[TuyaBLESwitch] = get_raykube_switches(hass, data)
     for mapping in mappings:
         if mapping.force_add or data.device.datapoints.has_id(
             mapping.dp_id, mapping.dp_type
