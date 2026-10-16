@@ -1,4 +1,22 @@
 {
+  "config": {
+    "abort": {
+      "no_unconfigured_devices": "Bluetooth w Home Assistant nie widzi żadnego nieskonfigurowanego urządzenia Tuya BLE. Sprawdź, czy Bluetooth działa w HA (adapter przekazany do maszyny wirtualnej albo ESPHome Bluetooth proxy), czy urządzenie jest w zasięgu i czy aplikacja Tuya nie jest z nim połączona.",
+      "already_configured": "To urządzenie jest już skonfigurowane."
+    },
+    "error": {
+      "device_not_registered": "Tego urządzenia nie ma w config/tuya_local_ble/devices.json (albo brakuje pliku). Sprawdź klucz z adresem MAC w pliku."
+    },
+    "flow_title": "{name}",
+    "step": {
+      "device": {
+        "data": {
+          "address": "Urządzenie Tuya BLE"
+        },
+        "description": "Wybierz urządzenie Tuya BLE do dodania. Jego dane (klucze) muszą być w config/tuya_local_ble/devices.json."
+      }
+    }
+  },
   "services": {
     "set_datapoint": {
       "name": "Ustaw datapoint",

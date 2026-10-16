@@ -60,9 +60,16 @@ class HASSTuyaBLEDeviceManager(AbstaractTuyaBLEDeviceManager):
     async def load_device_config(self):
         devicedata_path = os.path.join(self._hass.config.config_dir, CONF_CRED_FILE)
 
-        async with aiofiles.open(devicedata_path, mode='r') as f:
-            contents = await f.read()
-        self._devicedata = json.loads(contents)
+        try:
+            async with aiofiles.open(devicedata_path, mode='r') as f:
+                contents = await f.read()
+            self._devicedata = json.loads(contents)
+        except FileNotFoundError:
+            _LOGGER.error("Credentials file %s not found", devicedata_path)
+            self._devicedata = {}
+        except ValueError:
+            _LOGGER.error("Credentials file %s is not valid JSON", devicedata_path)
+            self._devicedata = {}
 
 
     async def get_device_credentials(

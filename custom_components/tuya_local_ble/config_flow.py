@@ -21,7 +21,7 @@ from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import callback
 #from homeassistant.data_entry_flow import FlowResult
 
-from .tuya_ble import SERVICE_UUID, TuyaBLEDeviceCredentials
+from .tuya_ble import SERVICE_UUID, SERVICE_UUID_FD50, TuyaBLEDeviceCredentials
 
 from .const import (
     CONF_KEEP_CONNECTED,
@@ -72,11 +72,19 @@ class TuyaBLEConfigFlow(ConfigFlow, domain=DOMAIN):
         }
         return await self.async_step_device()
 
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle a flow started from "Add integration"."""
+        return await self.async_step_device(user_input)
+
     async def async_step_device(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Handle the user step to pick discovered device."""
         errors: dict[str, str] = {}
+        if self._manager is None:
+            self._manager = HASSTuyaBLEDeviceManager(self.hass, self._data)
 
         if user_input is not None:
             address = user_input[CONF_ADDRESS]
@@ -109,7 +117,7 @@ class TuyaBLEConfigFlow(ConfigFlow, domain=DOMAIN):
                     discovery.address in current_addresses
                     or discovery.address in self._discovered_devices
                     or discovery.service_data is None
-                    or not SERVICE_UUID in discovery.service_data.keys()
+                    or not {SERVICE_UUID, SERVICE_UUID_FD50} & discovery.service_data.keys()
                 ):
                     continue
                 self._discovered_devices[discovery.address] = discovery
