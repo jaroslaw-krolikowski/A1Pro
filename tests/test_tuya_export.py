@@ -10,7 +10,7 @@ import sys
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
@@ -28,8 +28,6 @@ MODEL = {
             "properties": [
                 {"abilityId": 9, "code": "battery_state", "accessMode": "ro",
                  "typeSpec": {"type": "enum", "range": ["high", "medium", "low", "poweroff"]}},
-                {"abilityId": 11, "code": "arming_switch", "accessMode": "rw",
-                 "typeSpec": {"type": "bool"}},
                 {"abilityId": 21, "code": "alarm_lock", "accessMode": "ro",
                  "typeSpec": {"type": "enum", "range": ["low_battery", "defense"]}},
                 {"abilityId": 31, "code": "beep_volume", "name": "提示音量", "accessMode": "rw",
@@ -40,6 +38,8 @@ MODEL = {
                  "typeSpec": {"type": "value", "min": 0, "max": 600, "unit": "s"}},
                 {"abilityId": 68, "code": "special_function", "accessMode": "rw",
                  "typeSpec": {"type": "enum", "range": ["function1", "function2"]}},
+                {"abilityId": 78, "code": "special_control", "accessMode": "rw",
+                 "typeSpec": {"type": "bool"}},
                 {"abilityId": 71, "code": "ble_unlock_check", "accessMode": "rw",
                  "typeSpec": {"type": "raw"}},
             ]
@@ -71,6 +71,25 @@ RESPONSES = {
 }
 
 
+LOG_PAGES = {
+    None: {
+        "logs": [
+            {"code": "beep_volume", "value": "normal", "event_time": 1760000000000, "event_from": "1"},
+            {"code": "special_control", "value": "false", "event_time": 1760000100000, "event_from": "1"},
+        ],
+        "has_next": True,
+        "next_row_key": "row+key/2==",
+    },
+    "row+key/2==": {
+        "logs": [
+            {"code": "special_control", "value": "true", "event_time": 1760000200000, "event_from": "1"},
+            {"code": "ble_unlock_check", "value": "SECRETVALUE", "event_time": 1760000300000, "event_from": "1"},
+        ],
+        "has_next": False,
+    },
+}
+
+
 def expected_sign(path_and_query: str, timestamp: str, token: str) -> str:
     # Independent implementation of Tuya's post-2021 signing (as in tinytuya).
     payload = ACCESS_ID + token + timestamp
@@ -82,11 +101,15 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):  # noqa: N802
         path = urlsplit(self.path).path
         token = self.headers.get("access_token", "")
-        ok_sign = self.headers.get("sign") == expected_sign(self.path, self.headers["t"], token)
+        # Tuya signs the query before URL-encoding.
+        ok_sign = self.headers.get("sign") == expected_sign(unquote(self.path), self.headers["t"], token)
         if not ok_sign:
             body = {"success": False, "code": 1004, "msg": "sign invalid"}
         elif path != "/v1.0/token" and token != TOKEN:
             body = {"success": False, "code": 1010, "msg": "token invalid"}
+        elif path == f"/v1.0/devices/{DEVICE_ID}/logs":
+            row_key = parse_qs(urlsplit(self.path).query).get("start_row_key", [None])[0]
+            body = {"success": True, "result": LOG_PAGES[row_key]}
         elif path in RESPONSES:
             body = {"success": True, "result": RESPONSES[path]}
         else:
@@ -102,7 +125,7 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
 
-def test_export_builds_devices_json(tmp_path, monkeypatch):
+def test_export_builds_devices_json(tmp_path, monkeypatch, capsys):
     # Simulate Windows: the default text encoding is a legacy code page.
     monkeypatch.setattr(io, "text_encoding", lambda encoding, stacklevel=2: encoding or "cp1250")
     server = HTTPServer(("127.0.0.1", 0), Handler)
@@ -110,11 +133,14 @@ def test_export_builds_devices_json(tmp_path, monkeypatch):
     monkeypatch.setitem(tuya_export.REGIONS, "eu", f"http://127.0.0.1:{server.server_port}")
     monkeypatch.setenv("TUYA_ACCESS_ID", ACCESS_ID)
     monkeypatch.setenv("TUYA_ACCESS_SECRET", SECRET)
-    monkeypatch.setattr(sys, "argv", ["tuya_export.py", "--out", str(tmp_path)])
+    monkeypatch.setattr(sys, "argv", ["tuya_export.py", "--out", str(tmp_path), "--logs", "7"])
     try:
         assert tuya_export.main() == 0
     finally:
         server.shutdown()
+    output = capsys.readouterr().out
+    assert "DP78 special_control: ['false', 'true']" in output
+    assert "SECRETVALUE" not in output
 
     devices = json.loads((tmp_path / "devices.json").read_text(encoding="utf-8"))
     assert list(devices) == ["DC:23:AA:BB:CC:DD"]
@@ -125,7 +151,6 @@ def test_export_builds_devices_json(tmp_path, monkeypatch):
     assert entry["ble_unlock_check"] == "AAH//zEyMzQ1Njc4AaqrzN0AAA=="
     assert entry["raykube"] == {
         "dps": {
-            "arming": 11,
             "beep_volume": 31,
             "automatic_lock": 33,
             "auto_lock_time": 36,
@@ -138,11 +163,7 @@ def test_export_builds_devices_json(tmp_path, monkeypatch):
     }
     raw = json.loads((tmp_path / f"{DEVICE_ID}.json").read_text(encoding="utf-8"))
     assert "提示音量" in raw["model"]["model"]
-
-
-def test_alarm_is_not_an_arming_candidate():
-    assert not tuya_export.ARMING_CODE.search("alarm_lock")
-    assert tuya_export.ARMING_CODE.search("arming_switch")
+    assert [log["value"] for log in raw["logs"]][:3] == ["normal", "false", "true"]
 
 
 def test_script_runs_standalone():

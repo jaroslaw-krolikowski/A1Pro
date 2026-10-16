@@ -212,9 +212,6 @@
         "mute": {
           "name": "Mute"
         },
-        "arming": {
-          "name": "Arming mode"
-        },
         "programming_mode": {
           "name": "Programming Mode" 
         },

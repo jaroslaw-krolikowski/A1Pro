@@ -21,6 +21,7 @@ Usage:
   export TUYA_ACCESS_ID=...  TUYA_ACCESS_SECRET=...  TUYA_REGION=eu
   python3 tools/tuya_export.py
   python3 tools/tuya_export.py --device-id bf1234567890abcdef
+  python3 tools/tuya_export.py --logs 7    # also DP change history (last 7 days)
 """
 from __future__ import annotations
 
@@ -32,6 +33,7 @@ import os
 import re
 import sys
 import time
+from datetime import datetime
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -55,7 +57,19 @@ FEATURE_CODES = {
     "auto_lock_time": "auto_lock_time",
     "special_function": "special_function",
 }
-ARMING_CODE = re.compile(r"(^|_)(arm|arming|defen[cs]e|guard)(_|$)")
+
+# DP codes whose values are secrets (unlock check codes, keys).
+SENSITIVE_CODES = (
+    "ble_unlock_check",
+    "check_code_set",
+    "remote_pd_setkey_check",
+    "remote_no_dp_key",
+    "unlock_record_check",
+    "unlock_method_create",
+    "unlock_method_delete",
+    "unlock_method_modify",
+    "synch_method",
+)
 
 ERROR_HINTS = {
     1004: "Signature invalid: check Access ID / Access Secret.",
@@ -81,6 +95,8 @@ class TuyaCloud:
         self._token = ""
 
     def _sign(self, method: str, url: str, body: bytes, timestamp: str) -> str:
+        # Tuya signs the path with the query in alphabetical order and *not*
+        # URL-encoded (see tinytuya Cloud._tuyaplatform).
         string_to_sign = "\n".join(
             [method, hashlib.sha256(body).hexdigest(), "", url]
         )
@@ -92,15 +108,17 @@ class TuyaCloud:
         )
 
     def request(self, path: str, params: dict | None = None) -> object:
-        url = path
+        url = sign_url = path
         if params:
-            url += "?" + urllib.parse.urlencode(sorted(params.items()))
+            query = sorted(params.items())
+            url += "?" + urllib.parse.urlencode(query)
+            sign_url += "?" + "&".join(f"{key}={value}" for key, value in query)
         timestamp = str(int(time.time() * 1000))
         headers = {
             "client_id": self._access_id,
             "t": timestamp,
             "sign_method": "HMAC-SHA256",
-            "sign": self._sign("GET", url, b"", timestamp),
+            "sign": self._sign("GET", sign_url, b"", timestamp),
         }
         if self._token:
             headers["access_token"] = self._token
@@ -208,6 +226,62 @@ def model_properties(raw: dict) -> list[dict]:
     )
 
 
+def fetch_logs(cloud: TuyaCloud, device_id: str, days: int) -> list[dict]:
+    """DP report history (event type 7), oldest first.
+
+    Tuya keeps these logs for a limited time (typically 7 days) and only for
+    DPs declared in the cloud model.
+    """
+    end = int(time.time() * 1000)
+    start = end - days * 86400 * 1000
+    logs: list[dict] = []
+    row_key = None
+    for _ in range(50):
+        params = {
+            "type": 7,
+            "start_time": start,
+            "end_time": end,
+            "size": 100,
+            "query_type": 1,
+        }
+        if row_key:
+            params["start_row_key"] = row_key
+        result = cloud.request(f"/v1.0/devices/{device_id}/logs", params) or {}
+        logs += result.get("logs") or []
+        next_row_key = result.get("next_row_key")
+        if not result.get("has_next") or not next_row_key or next_row_key == row_key:
+            break
+        row_key = next_row_key
+    return sorted(logs, key=lambda log: int(log.get("event_time") or 0))
+
+
+def print_logs(logs: list[dict], properties: list[dict], show_secrets: bool) -> None:
+    dp_ids = {prop["code"]: prop["dp_id"] for prop in properties}
+    modes = {prop["code"]: prop["mode"] for prop in properties}
+    print(f"\nHistoria raportów DP: {len(logs)} wpisów")
+    print("czas                 DP  kod                         wartość")
+    seen: dict[str, list] = {}
+    for log in logs:
+        code = log.get("code", "")
+        value = log.get("value", "")
+        if code in SENSITIVE_CODES and not show_secrets:
+            value = "<ukryte>"
+        event_time = int(log.get("event_time") or 0) / 1000
+        stamp = datetime.fromtimestamp(event_time).strftime("%Y-%m-%d %H:%M:%S")
+        print(f"{stamp}  {dp_ids.get(code, '?')!s:>3} {code:<27} {value}")
+        values = seen.setdefault(code, [])
+        if value not in values:
+            values.append(value)
+    changed = [
+        code for code, values in seen.items()
+        if len(values) > 1 and modes.get(code) == "rw" and code not in SENSITIVE_CODES
+    ]
+    if changed:
+        print("\nUstawienia (rw), które zmieniały wartość w tym okresie:")
+        for code in changed:
+            print(f"  DP{dp_ids.get(code, '?')} {code}: {seen[code]}")
+
+
 def current_values(raw: dict) -> dict[str, object]:
     values: dict[str, object] = {}
     for item in raw.get("status") or []:
@@ -217,10 +291,9 @@ def current_values(raw: dict) -> dict[str, object]:
     return values
 
 
-def raykube_block(properties: list[dict]) -> tuple[dict, list[dict]]:
+def raykube_block(properties: list[dict]) -> dict:
     """Build the devices.json "raykube" block from the DP model."""
     block: dict[str, object] = {"dps": {}}
-    arming_candidates: list[dict] = []
     for prop in properties:
         code = prop["code"] or ""
         spec = prop["type_spec"]
@@ -235,11 +308,7 @@ def raykube_block(properties: list[dict]) -> tuple[dict, list[dict]]:
                 block["auto_lock_time_max"] = int(spec["max"])
         if code == "special_function" and "function1" in (spec.get("range") or []):
             block["calibrate_value"] = spec["range"].index("function1")
-        if ARMING_CODE.search(code):
-            arming_candidates.append(prop)
-    if len(arming_candidates) == 1:
-        block["dps"]["arming"] = arming_candidates[0]["dp_id"]
-    return block, arming_candidates
+    return block
 
 
 def describe_spec(spec: dict) -> str:
@@ -271,6 +340,13 @@ def main() -> int:
     parser.add_argument("--all", action="store_true", help="export all linked devices, not only locks")
     parser.add_argument("--out", default="tuya_export", help="output directory (default: tuya_export)")
     parser.add_argument("--show-secrets", action="store_true", help="print keys unmasked")
+    parser.add_argument(
+        "--logs",
+        type=int,
+        default=0,
+        metavar="DNI",
+        help="also fetch the DP change history of the last N days (Tuya keeps ~7)",
+    )
     args = parser.parse_args()
 
     if not args.access_id or not args.access_secret:
@@ -307,6 +383,11 @@ def main() -> int:
         except TuyaCloudError as exc:
             print(f"Błąd: {exc}", file=sys.stderr)
             continue
+        if args.logs > 0:
+            try:
+                raw["logs"] = fetch_logs(cloud, device_id, args.logs)
+            except TuyaCloudError as exc:
+                print(f"  ! logs: {exc}", file=sys.stderr)
         details = raw["details"] or {}
         factory = (raw.get("factory_info") or [{}])[0] if raw.get("factory_info") else {}
         values = current_values(raw)
@@ -332,7 +413,7 @@ def main() -> int:
         }
         if ble_unlock_check:
             entry["ble_unlock_check"] = ble_unlock_check
-        block, arming_candidates = raykube_block(properties)
+        block = raykube_block(properties)
         if details.get("category") == "jtmspro":
             entry["raykube"] = block
         devices_json[mac or device_id] = entry
@@ -350,21 +431,13 @@ def main() -> int:
         print("\nDP  kod                         tryb  typ / zakres                         wartość")
         for prop in properties:
             value = values.get(prop["code"], "")
-            if prop["code"] in ("ble_unlock_check", "check_code_set", "remote_pd_setkey_check",
-                                "remote_no_dp_key", "unlock_record_check") and not args.show_secrets:
+            if prop["code"] in SENSITIVE_CODES and not args.show_secrets:
                 value = "<ukryte>" if value else ""
             print(f"{prop['dp_id']!s:>3} {prop['code']!s:<27} {prop['mode']!s:<5} "
                   f"{describe_spec(prop['type_spec'])[:36]:<36} {value}")
 
-        if arming_candidates:
-            names = ", ".join(f"DP{p['dp_id']} {p['code']}" for p in arming_candidates)
-            print(f"\nTryb uzbrojenia — kandydaci z modelu: {names}")
-            if len(arming_candidates) > 1:
-                print("Kilka kandydatów: wpisz właściwy w raykube.dps.arming.")
-        elif details.get("category") == "jtmspro":
-            print("\nModel nie zawiera DP trybu uzbrojenia o znanej nazwie. Przełącznik trybu "
-                  "uzbrojenia pojawi się w HA dopiero po wpisaniu raykube.dps.arming "
-                  "(sprawdź według docs/raykube-a1-pro.md).")
+        if raw.get("logs") is not None:
+            print_logs(raw["logs"], properties, args.show_secrets)
 
     (out_dir / "devices.json").write_text(
         json.dumps(devices_json, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"

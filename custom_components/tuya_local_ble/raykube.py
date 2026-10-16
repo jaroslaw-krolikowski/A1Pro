@@ -23,9 +23,6 @@ DEFAULT_DPS: dict[str, int | None] = {
     "automatic_lock": 33,  # bool
     "auto_lock_time": 36,  # value, seconds (1..1800)
     "special_function": 68,  # enum: function1 = recalibrate
-    # The hc7n0urm cloud model declares no arming DP, so the arming switch is
-    # only created once its DP is set in devices.json ("raykube.dps.arming").
-    "arming": None,
 }
 
 DEFAULT_BEEP_VOLUME_OPTIONS = ["mute", "low", "normal", "high"]

@@ -480,7 +480,7 @@ class TuyaBLESwitch(TuyaBLEEntity, SwitchEntity):
 
 
 class TuyaBLERaykubeBoolSwitch(TuyaBLEEntity, SwitchEntity):
-    """Raykube setting backed by a boolean DP (auto-lock, arming)."""
+    """Raykube setting backed by a boolean DP (auto-lock)."""
 
     def __init__(
         self,
@@ -601,22 +601,6 @@ def get_raykube_switches(
                 SwitchEntityDescription(
                     key="automatic_lock",
                     icon="mdi:lock-clock",
-                    entity_category=EntityCategory.CONFIG,
-                ),
-                dp_id,
-                config,
-            )
-        )
-    if dp_id := config.dp("arming"):
-        entities.append(
-            TuyaBLERaykubeBoolSwitch(
-                hass,
-                data.coordinator,
-                data.device,
-                data.product,
-                SwitchEntityDescription(
-                    key="arming",
-                    icon="mdi:shield-lock",
                     entity_category=EntityCategory.CONFIG,
                 ),
                 dp_id,

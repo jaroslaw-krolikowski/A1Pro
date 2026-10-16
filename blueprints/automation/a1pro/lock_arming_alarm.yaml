@@ -1,0 +1,62 @@
+blueprint:
+  name: Zamek - tryb uzbrojenia (powiadomienie przy ręcznym otwarciu)
+  description: >-
+    Gdy tryb uzbrojenia jest włączony, a zamek zostanie otwarty ręcznie
+    (gałką, kluczem lub z aplikacji Tuya, czyli nie przez Home Assistant),
+    wysyła powiadomienie. Nie zmienia stanu zamka ani jego ustawień.
+
+
+    Otwarcie przez Home Assistant (z panelu, automatyzacji, asystenta
+    głosowego) nie wysyła powiadomienia.
+
+
+    Szybkie wykrycie wymaga stałego połączenia BLE z zamkiem: opcja
+    "Keep connected (24/7)" integracji Tuya Local BLE (najlepiej przez
+    ESPHome BLE proxy).
+  domain: automation
+  source_url: https://github.com/jaroslaw-krolikowski/A1Pro/blob/master/blueprints/automation/a1pro/lock_arming_alarm.yaml
+  input:
+    lock_entity:
+      name: Zamek
+      selector:
+        entity:
+          filter:
+            - domain: lock
+    arming_entity:
+      name: Tryb uzbrojenia
+      description: >-
+        Pomocnik typu przełącznik (Ustawienia → Urządzenia i usługi →
+        Pomocnicy → Przełącznik), np. input_boolean.zamek_uzbrojony.
+      selector:
+        entity:
+          filter:
+            - domain: input_boolean
+    notify_actions:
+      name: Powiadomienie
+      description: Np. notify.mobile_app_telefon z dźwiękiem alarmu.
+      selector:
+        action: {}
+
+mode: queued
+max: 5
+
+triggers:
+  - trigger: state
+    entity_id: !input lock_entity
+    from: locked
+    to: unlocked
+
+conditions:
+  - condition: state
+    entity_id: !input arming_entity
+    state: "on"
+  # A state change requested through Home Assistant carries the caller's
+  # user_id (UI, voice assistant) or parent_id (automation, script). A
+  # change reported by the lock itself carries neither.
+  - condition: template
+    value_template: >-
+      {{ trigger.to_state.context.user_id is none
+         and trigger.to_state.context.parent_id is none }}
+
+actions:
+  - sequence: !input notify_actions
