@@ -53,22 +53,36 @@ await page.evaluate(() => {
   window.card.hass = hass;
 });
 
-// Tap on a locked lock unlocks it, shows progress until the lock reports
+// A tap on the tile itself never locks or unlocks: it opens the details
 await tapTile();
+assert.deepEqual(await calls(), []);
+await page.locator("raykube-lock-panel").waitFor();
+await page.locator("raykube-lock-panel").locator('[data-act="close"]').click();
+assert.equal(await page.locator("raykube-lock-panel").count(), 0);
+
+// The button unlocks only after a confirming second tap
+await action.click();
+assert.deepEqual(await calls(), []);
+assert.equal((await action.textContent()).trim(), "Potwierdź");
+assert.equal(await action.getAttribute("aria-label"), "Potwierdź otwarcie");
+assert.match(await action.getAttribute("class"), /btn-destructive/);
+if (shots) await page.locator("#host").screenshot({ path: path.join(shots, "1c-tile-confirm.png") });
+await action.click();
 assert.deepEqual(await calls(), [["lock", "unlock", { entity_id: LOCK }]]);
 assert.equal(await page.locator("raykube-lock-card .meta .state").textContent(), "Otwieranie…");
 assert.equal(await action.isDisabled(), true);
 if (shots) await page.locator("#host").screenshot({ path: path.join(shots, "2-tile-pending.png") });
-await tapTile(); // ignored while pending
+await action.click({ force: true }); // ignored while pending
 assert.deepEqual(await calls(), []);
+assert.equal(await page.locator("raykube-lock-panel").count(), 0); // and does not open the panel
 await setLock("unlocked");
 assert.equal(await page.locator("raykube-lock-card .meta .state").textContent(), "Otwarty");
 assert.equal((await action.textContent()).trim(), "Zamknij");
 await page.waitForTimeout(300);
 if (shots) await page.locator("#host").screenshot({ path: path.join(shots, "3-tile-unlocked.png") });
 
-// Tap on an unlocked lock locks it; tapping the action button works too
-await action.click({ force: true });
+// Locking needs no confirmation
+await action.click();
 assert.deepEqual(await calls(), [["lock", "lock", { entity_id: LOCK }]]);
 await setLock("locked");
 
@@ -100,6 +114,9 @@ if (shots) await page.screenshot({ path: path.join(shots, "4-panel.png") });
 // Panel buttons: the next action is the primary one
 assert.match(await panel.locator('[data-act="unlock"]').getAttribute("class"), /btn-default/);
 assert.match(await panel.locator('[data-act="lock"]').getAttribute("class"), /btn-outline/);
+await panel.locator('[data-act="unlock"]').click();
+assert.deepEqual(await calls(), []); // first tap only asks for confirmation
+assert.equal((await panel.locator('[data-act="unlock"]').textContent()).trim(), "Potwierdź otwarcie");
 await panel.locator('[data-act="unlock"]').click();
 assert.deepEqual(await calls(), [["lock", "unlock", { entity_id: LOCK }]]);
 assert.equal(await panel.locator(".status .state").textContent(), "Otwieranie…");
@@ -135,18 +152,14 @@ assert.deepEqual(await calls(), [["button", "press", { entity_id: "button.calibr
 await panel.locator('[data-act="close"]').click();
 assert.equal(await page.locator("raykube-lock-panel").count(), 0);
 
-// confirm_unlock: first tap arms, second tap unlocks
+// confirm_unlock: false unlocks on the first tap of the button
 await setLock("locked");
 await page.evaluate(() => {
-  window.card.setConfig({ entity: "lock.raykube_a1_ultra_d9f494_zamek", name: "Drzwi wejściowe", confirm_unlock: true });
+  window.card.setConfig({ entity: "lock.raykube_a1_ultra_d9f494_zamek", name: "Drzwi wejściowe", confirm_unlock: false });
   window.card.hass = window.makeHass();
 });
 await setLock("locked");
-await tapTile();
-assert.deepEqual(await calls(), []);
-assert.equal((await action.textContent()).trim(), "Potwierdź otwarcie");
-if (shots) await page.locator("#host").screenshot({ path: path.join(shots, "6-tile-confirm.png") });
-await tapTile();
+await action.click();
 assert.deepEqual(await calls(), [["lock", "unlock", { entity_id: LOCK }]]);
 
 // After an HA restart nothing is known yet: tap locks (never unlocks), the
@@ -161,7 +174,7 @@ await page.evaluate((id) => {
 }, LOCK);
 assert.equal(await page.locator("raykube-lock-card .meta .state").textContent(), "Stan nieznany");
 assert.equal((await action.textContent()).trim(), "Zamknij");
-await tapTile();
+await action.click();
 assert.deepEqual(await calls(), [["lock", "lock", { entity_id: LOCK }]]);
 await page.locator("raykube-lock-card .more").click();
 const unknownPanel = page.locator("raykube-lock-panel");

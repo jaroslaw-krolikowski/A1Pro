@@ -124,14 +124,16 @@ Ręcznie, bez skryptu:
 Integracja instaluje własną kartę dashboardu. HA ładuje ją sam, bez HACS frontend i bez dodawania zasobów.
 Standardowego okna zamka w HA (z dużym przełącznikiem) integracja zmienić nie może, więc ta karta je zastępuje.
 
-- **Stuknięcie** w kafelek **przełącza** zamek: otwiera zamknięty, zamyka otwarty. Przycisk po prawej
-  pokazuje, co zrobi stuknięcie. Do czasu potwierdzenia przez zamek kręci się wskaźnik.
-  Reaguje cały kafelek, nie tylko przycisk. Gdy stan jest nieznany (np. tuż po restarcie HA),
-  stuknięcie zawsze **zamyka**, nigdy nie otwiera. Żeby przypadkowe dotknięcie (np. w kieszeni,
-  poza domem) nie otworzyło drzwi, ustaw `confirm_unlock: true`. Wtedy otwarcie wymaga drugiego
-  stuknięcia w ciągu kilku sekund, a zamykanie działa nadal od razu.
-- **Przytrzymanie** (albo strzałka po prawej) otwiera panel ze szczegółami:
-  - przyciski **Zamknij** i **Otwórz**. Wyróżniony jest ten, który zmienia aktualny stan;
+- **Tylko przycisk** po prawej zamyka albo otwiera zamek. Pokazuje, co zrobi: **Otwórz** przy zamkniętym,
+  **Zamknij** przy otwartym. Do czasu potwierdzenia przez zamek kręci się wskaźnik.
+  - **Otwarcie wymaga potwierdzenia.** Pierwsze stuknięcie zmienia przycisk na czerwony **Potwierdź**,
+    drzwi otwiera dopiero drugie stuknięcie w ciągu kilku sekund. Zamykanie działa od razu.
+    Potwierdzenie wyłącza `confirm_unlock: false`.
+  - Gdy stan jest nieznany (np. tuż po restarcie HA), przycisk zawsze **zamyka**, nigdy nie otwiera.
+- **Stuknięcie w resztę kafelka**, przytrzymanie albo strzałka otwiera panel ze szczegółami. Nie zmienia
+  stanu zamka:
+  - przyciski **Zamknij** i **Otwórz** (otwarcie też z potwierdzeniem). Wyróżniony jest ten,
+    który zmienia aktualny stan;
   - stan i czas ostatniej zmiany z informacją, skąd przyszła: *na zamku* (gałka, klucz, aplikacja,
     auto-zamknięcie), *z Home Assistant* albo *automatyzacja*;
   - bateria, auto-zamykanie i jego czas, tryb uzbrojenia, opcjonalnie siła sygnału;
@@ -146,7 +148,7 @@ type: custom:raykube-lock-card
 entity: lock.raykube_a1_ultra_d9f494_zamek
 name: Drzwi wejściowe                        # opcjonalnie
 arming_entity: input_boolean.zamek_uzbrojony # opcjonalnie, pomocnik trybu uzbrojenia
-confirm_unlock: false                        # opcjonalnie: true = otwarcie wymaga drugiego dotknięcia
+confirm_unlock: true                         # opcjonalnie: false = otwarcie bez potwierdzenia
 ```
 
 Wygląd jest wzorowany na shadcn/ui, a ikony to [Lucide](https://lucide.dev) wbudowane w kartę.
