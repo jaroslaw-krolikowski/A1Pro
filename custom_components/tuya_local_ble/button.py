@@ -12,11 +12,13 @@ from homeassistant.components.button import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import DOMAIN
 from .devices import TuyaBLEData, TuyaBLEEntity, TuyaBLEProductInfo
+from .raykube import RaykubeConfig, get_raykube_config
 from .tuya_ble import TuyaBLEDataPointType, TuyaBLEDevice
 
 _LOGGER = logging.getLogger(__name__)
@@ -167,6 +169,96 @@ class TuyaBLEButton(TuyaBLEEntity, ButtonEntity):
         return result
 
 
+class TuyaBLERaykubeCalibrateButton(TuyaBLEEntity, ButtonEntity):
+    """Start lock calibration (special_function = function1)."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        coordinator: DataUpdateCoordinator,
+        device: TuyaBLEDevice,
+        product: TuyaBLEProductInfo,
+        dp_id: int,
+        config: RaykubeConfig,
+    ) -> None:
+        super().__init__(
+            hass,
+            coordinator,
+            device,
+            product,
+            ButtonEntityDescription(
+                key="calibrate",
+                icon="mdi:tune-vertical",
+                entity_category=EntityCategory.CONFIG,
+            ),
+        )
+        self._dp_id = dp_id
+        self._config = config
+
+    @property
+    def available(self) -> bool:
+        return self._config.sleepy or super().available
+
+    async def async_press(self) -> None:
+        value = self._config.calibrate_value
+        datapoint = self._device.datapoints.get_or_create(
+            self._dp_id, TuyaBLEDataPointType.DT_ENUM, value
+        )
+        await datapoint.set_value(value)
+
+
+class TuyaBLERaykubeRefreshButton(TuyaBLEEntity, ButtonEntity):
+    """Connect and request a full status snapshot from the lock."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        coordinator: DataUpdateCoordinator,
+        device: TuyaBLEDevice,
+        product: TuyaBLEProductInfo,
+        config: RaykubeConfig,
+    ) -> None:
+        super().__init__(
+            hass,
+            coordinator,
+            device,
+            product,
+            ButtonEntityDescription(
+                key="refresh_status",
+                icon="mdi:refresh",
+                entity_category=EntityCategory.DIAGNOSTIC,
+            ),
+        )
+        self._config = config
+
+    @property
+    def available(self) -> bool:
+        return self._config.sleepy or super().available
+
+    async def async_press(self) -> None:
+        await self._device.update()
+
+
+def get_raykube_buttons(
+    hass: HomeAssistant, data: TuyaBLEData
+) -> list[ButtonEntity]:
+    config = get_raykube_config(data.device)
+    if config is None:
+        return []
+    entities: list[ButtonEntity] = [
+        TuyaBLERaykubeRefreshButton(
+            hass, data.coordinator, data.device, data.product, config
+        )
+    ]
+    if dp_id := config.dp("special_function"):
+        entities.append(
+            TuyaBLERaykubeCalibrateButton(
+                hass, data.coordinator, data.device, data.product, dp_id, config
+            )
+        )
+    return entities
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -175,7 +267,7 @@ async def async_setup_entry(
     """Set up the Tuya BLE sensors."""
     data: TuyaBLEData = hass.data[DOMAIN][entry.entry_id]
     mappings = get_mapping_by_device(data.device)
-    entities: list[TuyaBLEButton] = []
+    entities: list[TuyaBLEButton] = get_raykube_buttons(hass, data)
     for mapping in mappings:
         if mapping.force_add or data.device.datapoints.has_id(
             mapping.dp_id, mapping.dp_type

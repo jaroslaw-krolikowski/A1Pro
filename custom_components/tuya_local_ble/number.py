@@ -30,6 +30,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import DOMAIN
 from .devices import TuyaBLEData, TuyaBLEEntity, TuyaBLEProductInfo
+from .raykube import RaykubeConfig, get_raykube_config
 from .tuya_ble import TuyaBLEDataPointType, TuyaBLEDevice
 
 _LOGGER = logging.getLogger(__name__)
@@ -512,6 +513,74 @@ class TuyaBLENumber(TuyaBLEEntity, NumberEntity):
         return result
 
 
+class TuyaBLERaykubeAutoLockTime(TuyaBLEEntity, NumberEntity):
+    """Delay between unlocking and automatic locking, in seconds."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        coordinator: DataUpdateCoordinator,
+        device: TuyaBLEDevice,
+        product: TuyaBLEProductInfo,
+        dp_id: int,
+        config: RaykubeConfig,
+    ) -> None:
+        super().__init__(
+            hass,
+            coordinator,
+            device,
+            product,
+            NumberEntityDescription(
+                key="auto_lock_time",
+                icon="mdi:timer-lock",
+                native_min_value=config.auto_lock_time_min,
+                native_max_value=config.auto_lock_time_max,
+                native_step=1,
+                native_unit_of_measurement=UnitOfTime.SECONDS,
+                entity_category=EntityCategory.CONFIG,
+            ),
+        )
+        self._attr_mode = NumberMode.BOX
+        self._dp_id = dp_id
+        self._config = config
+
+    @property
+    def available(self) -> bool:
+        """Sleepy locks connect on demand, so settings stay available."""
+        return self._config.sleepy or super().available
+
+    @property
+    def native_value(self) -> float | None:
+        datapoint = self._device.datapoints[self._dp_id]
+        if datapoint is None:
+            return None
+        try:
+            return int(datapoint.value)
+        except (TypeError, ValueError):
+            return None
+
+    async def async_set_native_value(self, value: float) -> None:
+        int_value = int(value)
+        datapoint = self._device.datapoints.get_or_create(
+            self._dp_id, TuyaBLEDataPointType.DT_VALUE, int_value
+        )
+        await datapoint.set_value(int_value)
+        self._coordinator.async_update_listeners()
+
+
+def get_raykube_numbers(
+    hass: HomeAssistant, data: TuyaBLEData
+) -> list[NumberEntity]:
+    config = get_raykube_config(data.device)
+    if config is None or not (dp_id := config.dp("auto_lock_time")):
+        return []
+    return [
+        TuyaBLERaykubeAutoLockTime(
+            hass, data.coordinator, data.device, data.product, dp_id, config
+        )
+    ]
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -520,7 +589,7 @@ async def async_setup_entry(
     """Set up the Tuya BLE sensors."""
     data: TuyaBLEData = hass.data[DOMAIN][entry.entry_id]
     mappings = get_mapping_by_device(data.device)
-    entities: list[TuyaBLENumber] = []
+    entities: list[TuyaBLENumber] = get_raykube_numbers(hass, data)
     for mapping in mappings:
         if mapping.force_add or data.device.datapoints.has_id(
             mapping.dp_id, mapping.dp_type

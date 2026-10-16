@@ -418,6 +418,13 @@ class TuyaBLEDevice:
             return ""
 
     @property
+    def raykube_options(self) -> dict:
+        if self._device_info is not None and self._device_info.raykube:
+            return self._device_info.raykube
+        else:
+            return {}
+
+    @property
     def device_version(self) -> str:
         return self._device_version
 
@@ -1229,6 +1236,11 @@ class TuyaBLEDevice:
         malformed/unknown frames instead of raising.
         """
         datapoints: list[TuyaBLEDataPoint] = []
+        if self.product_id == "hc7n0urm":
+            records = self._decode_fd50_v4_report(data)
+            if records is not None:
+                self._apply_fd50_v4_records(records)
+                return
         # CTL20H initial bulk status snapshot.
         # DP8 is battery percentage encoded as a 4-byte Tuya VALUE.
         # DP47 is the physical lock state: 0=locked, 1=unlocked.
@@ -1434,6 +1446,93 @@ class TuyaBLEDevice:
                 data.hex(),
             )
 
+        self._fire_callbacks(datapoints)
+
+    # DPs whose values are secrets (unlock check codes/keys, credentials) and
+    # must never be written to the log.
+    FD50_SENSITIVE_DPS = (1, 2, 3, 54, 61, 70, 71, 72, 73)
+
+    @staticmethod
+    def _decode_fd50_v4_records(
+        data: bytes, start_pos: int
+    ) -> list[tuple[int, TuyaBLEDataPointType, bytes]] | None:
+        """Decode `<dp_id> <type> <len:2> <value:len>` records.
+
+        Returns None unless the records consume `data` exactly.
+        """
+        records: list[tuple[int, TuyaBLEDataPointType, bytes]] = []
+        pos = start_pos
+        while pos < len(data):
+            if len(data) - pos < 4:
+                return None
+            dp_id = data[pos]
+            type_value = data[pos + 1]
+            if type_value > TuyaBLEDataPointType.DT_BITMAP.value:
+                return None
+            data_len = int.from_bytes(data[pos + 2:pos + 4], "big")
+            next_pos = pos + 4 + data_len
+            if data_len == 0 or next_pos > len(data):
+                return None
+            records.append(
+                (dp_id, TuyaBLEDataPointType(type_value), bytes(data[pos + 4:next_pos]))
+            )
+            pos = next_pos
+        return records or None
+
+    def _decode_fd50_v4_report(
+        self, data: bytes
+    ) -> list[tuple[int, TuyaBLEDataPointType, bytes]] | None:
+        """Strictly decode a TuyaOS FD50 V4 device report.
+
+        Layout observed on hc7n0urm (status snapshot and single reports):
+            00000000 <seq:1> <flags:2> {<dp_id> <type> <len:2> <value>}*
+        Timestamped reports may carry `<time_type:1> <time:4|13>` after the
+        header. Returns None when the frame does not parse exactly, so the
+        caller can fall back to the heuristic parser.
+        """
+        if len(data) < 11 or data[0:4] != b"\x00\x00\x00\x00":
+            return None
+        records = self._decode_fd50_v4_records(data, 7)
+        if records is None and data[7] in (0, 1):
+            time_len = 13 if data[7] == 0 else 4
+            records = self._decode_fd50_v4_records(data, 8 + time_len)
+        return records
+
+    def _apply_fd50_v4_records(
+        self, records: list[tuple[int, TuyaBLEDataPointType, bytes]]
+    ) -> None:
+        datapoints: list[TuyaBLEDataPoint] = []
+        for dp_id, dp_type, raw_value in records:
+            if dp_type == TuyaBLEDataPointType.DT_RAW and dp_id in (9, 31, 48, 68) and len(raw_value) == 1:
+                # Older firmware reports these enums with a raw type byte.
+                dp_type = TuyaBLEDataPointType.DT_ENUM
+            match dp_type:
+                case TuyaBLEDataPointType.DT_RAW | TuyaBLEDataPointType.DT_BITMAP:
+                    value = raw_value
+                case TuyaBLEDataPointType.DT_BOOL:
+                    value = int.from_bytes(raw_value, "big") != 0
+                case TuyaBLEDataPointType.DT_VALUE:
+                    value = int.from_bytes(raw_value, "big", signed=True)
+                case TuyaBLEDataPointType.DT_ENUM:
+                    value = int.from_bytes(raw_value, "big", signed=False)
+                case TuyaBLEDataPointType.DT_STRING:
+                    value = raw_value.decode(errors="replace")
+            _LOGGER.debug(
+                "%s: Received FD50 V4 datapoint update, id: %s, type: %s, value: %s",
+                self.address,
+                dp_id,
+                dp_type.name,
+                "<redacted>" if dp_id in self.FD50_SENSITIVE_DPS else value,
+            )
+            self._datapoints._update_from_device(dp_id, time.time(), 0, dp_type, value)
+            datapoints.append(self._datapoints[dp_id])
+            if dp_id == 47 and dp_type == TuyaBLEDataPointType.DT_BOOL:
+                # lock_motor_state: true = unlocked. The lock entity reads the
+                # synthetic DP118 (1 = unlocked, 0 = locked).
+                self._datapoints._update_from_device(
+                    118, time.time(), 0, TuyaBLEDataPointType.DT_ENUM, 1 if value else 0
+                )
+                datapoints.append(self._datapoints[118])
         self._fire_callbacks(datapoints)
 
     def _parse_ikphogdj_datapoints_v4(self, data: bytes) -> None:
@@ -1775,18 +1874,24 @@ class TuyaBLEDevice:
                 await self._send_packet(
                     TuyaBLECode.FUN_SENDER_DPS_V4, raykube_lock_v4_data, True
                 )
-            elif set(datapoint_ids).issubset({31, 48}):
+            else:
+                # Settings (volume, auto-lock, calibration, arming, ...) use
+                # the typed V4 write the official app sends:
+                #   00000000 01 <dp_id> <type> <len:2> <value>
                 for dp_id in datapoint_ids:
-                    raykube_v4_data = self._build_raykube_v4_enum_data(dp_id)
+                    if dp_id == 52:
+                        # Keepalive dummy from the lock entity (DP52 is the
+                        # "delete temporary password" DP); never send it.
+                        _LOGGER.debug(
+                            "%s: Skipping keepalive datapoint write: %s",
+                            self.address,
+                            dp_id,
+                        )
+                        continue
+                    raykube_v4_data = self._build_fd50_v4_dp_data(dp_id)
                     await self._send_packet(
                         TuyaBLECode.FUN_SENDER_DPS_V4, raykube_v4_data, True
                     )
-            else:
-                _LOGGER.debug(
-                    "%s: Skipping unsupported Raykube legacy datapoint write: %s",
-                    self.address,
-                    datapoint_ids,
-                )
             return
 
         if self.product_id in ("ikphogdj", "c6hfl8bt"):
@@ -1855,13 +1960,18 @@ class TuyaBLEDevice:
         check_key = check[13:17]
         return b"\x00\x00\x00\x00\x01\x47\x00\x00\x13" + prefix + b"\x00\x01" + check_code + b"\x01" + check_key + b"\x00\x01"
 
-    def _build_raykube_v4_enum_data(self, dp_id: int) -> bytes:
-        """Build a Raykube/TuyaOS FD50 one-byte V4 enum write."""
+    def _build_fd50_v4_dp_data(self, dp_id: int) -> bytes:
+        """Build a TuyaOS FD50 V4 datapoint write with the DP's real type."""
         dp = self._datapoints[dp_id]
         value = dp._get_value()
-        if len(value) != 1:
+        if not value or len(value) > 0xFFFF:
             raise TuyaBLEDataLengthError()
-        return b"\x00\x00\x00\x00\x01" + bytes([dp_id]) + len(value).to_bytes(3, "big") + value
+        return (
+            b"\x00\x00\x00\x00\x01"
+            + bytes([dp_id, dp.type.value])
+            + len(value).to_bytes(2, "big")
+            + value
+        )
 
     def _build_ikphogdj_v4_scalar_data(self, dp_id: int, dp_type: int) -> bytes:
         """Build an ikphogdj (HL Knob-2) V4 write for a simple scalar
@@ -1903,10 +2013,10 @@ class TuyaBLEDevice:
             # Candidate physical lock command; allow on-demand connect.
             await self._send_datapoints_v3(datapoint_ids)
             return
-        if self.product_id in ("hc7n0urm", "y2yaegze") and set(datapoint_ids).issubset({31, 48}):
-            # Beep volume and lock direction use the same command-style V4
-            # write framing as DP46 and must be allowed before protocol_version
-            # is known on sleepy battery locks.
+        if self.product_id in ("hc7n0urm", "y2yaegze"):
+            # Settings use the same command-style V4 write framing as DP46
+            # and must be allowed before protocol_version is known on sleepy
+            # battery locks.
             await self._send_datapoints_v3(datapoint_ids)
             return
 

@@ -15,6 +15,9 @@ class TuyaBLEDeviceCredentials:
     product_model: str | None
     product_name: str | None
     ble_unlock_check: str | None = None
+    # Optional per-device overrides for Raykube A1 Pro entities (DP ids,
+    # volume levels, auto-lock range). See docs/raykube-a1-pro.md.
+    raykube: dict | None = None
 
     def __str__(self):
         return (

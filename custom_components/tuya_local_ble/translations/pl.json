@@ -1,0 +1,87 @@
+{
+  "services": {
+    "set_datapoint": {
+      "name": "Ustaw datapoint",
+      "description": "Zapisuje dowolny datapoint Tuya w urządzeniu (zaawansowane).",
+      "fields": {
+        "device_id": {
+          "name": "Urządzenie",
+          "description": "Urządzenie Tuya Local BLE."
+        },
+        "dp_id": {
+          "name": "Numer DP",
+          "description": "Numer datapointu."
+        },
+        "type": {
+          "name": "Typ",
+          "description": "Typ datapointu: bool, value, enum (indeks), string lub raw (hex)."
+        },
+        "value": {
+          "name": "Wartość",
+          "description": "Wartość do zapisania, np. true, 30, 2 albo 0a0b."
+        }
+      }
+    }
+  },
+  "entity": {
+    "button": {
+      "calibrate": {
+        "name": "Kalibracja"
+      },
+      "refresh_status": {
+        "name": "Odśwież stan"
+      }
+    },
+    "number": {
+      "auto_lock_time": {
+        "name": "Czas automatycznego zamknięcia"
+      }
+    },
+    "select": {
+      "beep_volume": {
+        "name": "Głośność zamka",
+        "state": {
+          "mute": "Wyciszony",
+          "low": "Cicho",
+          "normal": "Normalnie",
+          "high": "Głośno"
+        }
+      },
+      "lock_direction": {
+        "name": "Kierunek zamka"
+      }
+    },
+    "sensor": {
+      "datapoints": {
+        "name": "Datapointy"
+      },
+      "battery_state": {
+        "name": "Stan baterii",
+        "state": {
+          "high": "Wysoki",
+          "low": "Niski",
+          "normal": "Normalny"
+        }
+      },
+      "signal_strength": {
+        "name": "Siła sygnału"
+      }
+    },
+    "switch": {
+      "automatic_lock": {
+        "name": "Automatyczne zamykanie"
+      },
+      "mute": {
+        "name": "Wyciszenie"
+      },
+      "arming": {
+        "name": "Tryb uzbrojenia"
+      }
+    },
+    "lock": {
+      "manual_lock": {
+        "name": "Zamek"
+      }
+    }
+  }
+}

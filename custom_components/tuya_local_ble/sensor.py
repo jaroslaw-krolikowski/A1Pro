@@ -43,6 +43,7 @@ from .const import (
     DOMAIN,
 )
 from .devices import TuyaBLEData, TuyaBLEEntity, TuyaBLEProductInfo
+from .raykube import SENSITIVE_DPS, RaykubeConfig, get_raykube_config
 from .tuya_ble import TuyaBLEDataPointType, TuyaBLEDevice
 
 _LOGGER = logging.getLogger(__name__)
@@ -570,6 +571,59 @@ class TuyaBLESensor(TuyaBLEEntity, SensorEntity):
         return result
 
 
+class TuyaBLERaykubeDatapointsSensor(TuyaBLEEntity, SensorEntity):
+    """Diagnostic: every datapoint received from the lock, as attributes.
+
+    Used to confirm DP numbers (e.g. arming) by changing a setting in the
+    Tuya app and comparing the snapshot after "Refresh status".
+    """
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        coordinator: DataUpdateCoordinator,
+        device: TuyaBLEDevice,
+        product: TuyaBLEProductInfo,
+        config: RaykubeConfig,
+    ) -> None:
+        super().__init__(
+            hass,
+            coordinator,
+            device,
+            product,
+            SensorEntityDescription(
+                key="datapoints",
+                icon="mdi:format-list-numbered",
+                entity_category=EntityCategory.DIAGNOSTIC,
+            ),
+        )
+        self._config = config
+
+    @property
+    def available(self) -> bool:
+        return self._config.sleepy or super().available
+
+    @property
+    def native_value(self) -> int:
+        return len(self._datapoint_attributes())
+
+    def _datapoint_attributes(self) -> dict[str, str | int | bool]:
+        result: dict[str, str | int | bool] = {}
+        for dp_id in sorted(self._device.datapoints._datapoints):
+            if dp_id in SENSITIVE_DPS or dp_id == 118:
+                continue
+            datapoint = self._device.datapoints[dp_id]
+            value = datapoint.value
+            if isinstance(value, (bytes, bytearray)):
+                value = value.hex()
+            result[f"dp_{dp_id}"] = value
+        return result
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str | int | bool]:
+        return self._datapoint_attributes()
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -587,6 +641,12 @@ async def async_setup_entry(
             rssi_mapping,
         )
     ]
+    if (raykube_config := get_raykube_config(data.device)) is not None:
+        entities.append(
+            TuyaBLERaykubeDatapointsSensor(
+                hass, data.coordinator, data.device, data.product, raykube_config
+            )
+        )
     for mapping in mappings:
         if mapping.force_add or data.device.datapoints.has_id(
             mapping.dp_id, mapping.dp_type
