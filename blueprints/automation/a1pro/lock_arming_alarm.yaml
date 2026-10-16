@@ -1,16 +1,13 @@
 blueprint:
-  name: Zamek - tryb uzbrojenia (alarm przy ręcznym otwarciu)
+  name: Zamek - tryb uzbrojenia (powiadomienie przy ręcznym otwarciu)
   description: >-
     Gdy tryb uzbrojenia jest włączony, a zamek zostanie otwarty ręcznie
     (gałką, kluczem lub z aplikacji Tuya, czyli nie przez Home Assistant),
-    wysyła powiadomienie i uruchamia alarm: opcjonalnie zamyka zamek z
-    powrotem (z jego własnym sygnałem dźwiękowym) i powtarza wybrane akcje
-    co zadany interwał, aż tryb uzbrojenia zostanie wyłączony albo minie
-    maksymalny czas alarmu.
+    wysyła powiadomienie. Nie zmienia stanu zamka ani jego ustawień.
 
 
     Otwarcie przez Home Assistant (z panelu, automatyzacji, asystenta
-    głosowego) nie uruchamia alarmu.
+    głosowego) nie wysyła powiadomienia.
 
 
     Szybkie wykrycie wymaga stałego połączenia BLE z zamkiem: opcja
@@ -35,69 +32,13 @@ blueprint:
           filter:
             - domain: input_boolean
     notify_actions:
-      name: Powiadomienie (raz, przy wykryciu)
+      name: Powiadomienie
       description: Np. notify.mobile_app_telefon z dźwiękiem alarmu.
-      default: []
       selector:
         action: {}
-    relock:
-      name: Zamknij zamek ponownie
-      description: Po wykryciu ręcznego otwarcia od razu wyślij do zamka komendę zamknięcia.
-      default: false
-      selector:
-        boolean: {}
-    lock_mute_switch:
-      name: Przełącznik wyciszenia zamka (opcjonalnie)
-      description: >-
-        Przełącznik "Wyciszenie" zamka. Jeśli ustawiony, alarm wyłącza
-        wyciszenie przed zamknięciem, żeby zamek zapiszczał przy zamykaniu.
-      default: ""
-      selector:
-        entity:
-          filter:
-            - domain: switch
-    repeat_relock:
-      name: Powtarzaj zamykanie co interwał
-      description: >-
-        Wysyła komendę zamknięcia przy każdym powtórzeniu alarmu (dźwięk
-        zamka), jeśli zamek piszczy także przy zamykaniu już zamkniętego.
-        Każda komenda zużywa baterię zamka.
-      default: false
-      selector:
-        boolean: {}
-    alarm_actions:
-      name: Akcje powtarzane w trakcie alarmu
-      description: Wykonywane od razu i potem co interwał, np. syrena lub komunikat na głośniku.
-      default: []
-      selector:
-        action: {}
-    stop_actions:
-      name: Akcje po zakończeniu alarmu
-      description: Np. siren.turn_off albo przywrócenie wyciszenia zamka.
-      default: []
-      selector:
-        action: {}
-    repeat_interval:
-      name: Interwał powtarzania
-      default: 10
-      selector:
-        number:
-          min: 2
-          max: 300
-          unit_of_measurement: s
-          mode: box
-    max_duration:
-      name: Maksymalny czas alarmu
-      default: 10
-      selector:
-        number:
-          min: 1
-          max: 120
-          unit_of_measurement: min
-          mode: box
 
-mode: single
-max_exceeded: silent
+mode: queued
+max: 5
 
 triggers:
   - trigger: state
@@ -117,43 +58,5 @@ conditions:
       {{ trigger.to_state.context.user_id is none
          and trigger.to_state.context.parent_id is none }}
 
-variables:
-  lock_entity: !input lock_entity
-  arming_entity: !input arming_entity
-  relock: !input relock
-  lock_mute_switch: !input lock_mute_switch
-  repeat_relock: !input repeat_relock
-  repeat_interval: !input repeat_interval
-  max_duration: !input max_duration
-
 actions:
   - sequence: !input notify_actions
-  - if:
-      - condition: template
-        value_template: "{{ (relock or repeat_relock) and lock_mute_switch | length > 0 }}"
-    then:
-      - action: switch.turn_off
-        target:
-          entity_id: "{{ lock_mute_switch }}"
-        continue_on_error: true
-  - repeat:
-      while:
-        - condition: template
-          value_template: >-
-            {{ is_state(arming_entity, 'on')
-               and (repeat.index - 1) * repeat_interval < max_duration * 60 }}
-      sequence:
-        - if:
-            - condition: template
-              value_template: "{{ (relock and repeat.first) or repeat_relock }}"
-          then:
-            - action: lock.lock
-              target:
-                entity_id: "{{ lock_entity }}"
-              continue_on_error: true
-        - sequence: !input alarm_actions
-        - wait_template: "{{ is_state(arming_entity, 'off') }}"
-          timeout:
-            seconds: "{{ repeat_interval }}"
-          continue_on_timeout: true
-  - sequence: !input stop_actions

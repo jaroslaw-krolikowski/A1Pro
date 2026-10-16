@@ -102,25 +102,16 @@ Ręcznie, bez skryptu:
   kod `ble_unlock_check`. Bez niego zamykanie działa, ale otwieranie nie.
 - MAC bywa zapisany w aplikacji „od tyłu”. Jeśli zamek nie jest wykrywany, odwróć kolejność bajtów.
 
-## Tryb uzbrojenia (alarm w Home Assistant)
+## Tryb uzbrojenia (powiadomienie w Home Assistant)
 
-Zamek nie ma własnego trybu uzbrojenia ani komendy „zapiszcz” (sprawdzone na pełnym modelu DP `hc7n0urm`),
-więc tryb uzbrojenia działa w Home Assistant. Zamek jest w nim czujnikiem, a dźwięk dają inne urządzenia.
+Zamek nie ma własnego trybu uzbrojenia (sprawdzone na pełnym modelu DP `hc7n0urm`), więc tryb uzbrojenia
+działa w Home Assistant. Zamek jest w nim tylko czujnikiem. Automatyzacja nie zmienia stanu zamka
+ani jego ustawień.
 
 Gdy tryb jest włączony, a zamek zmieni stan z *zamknięty* na *otwarty* nie z polecenia HA (ktoś przekręcił
-gałkę, użył klucza albo otworzył z aplikacji Tuya), automatyzacja:
-- wysyła raz powiadomienie (np. na telefon),
-- opcjonalnie od razu zamyka zamek. Jeśli podasz przełącznik **Wyciszenie** zamka, najpierw wyłącza
-  wyciszenie, więc zamek zapiszczy przy zamykaniu (to jedyny dźwięk zamka, który da się wywołać z HA),
-- opcjonalnie powtarza zamykanie i inne akcje (np. syrenę) co zadany interwał,
-- kończy, gdy wyłączysz tryb uzbrojenia albo minie maksymalny czas alarmu, i wykonuje akcje końcowe.
-
-Otwarcie z HA (panel, automatyzacja, asystent głosowy) nie uruchamia alarmu. HA rozpoznaje to po
-kontekście zmiany stanu: zmiana zgłoszona przez sam zamek nie ma przypisanego użytkownika ani automatyzacji.
-
-> Czy zamek piszczy przy komendzie zamknięcia, gdy jest już zamknięty, nie jest jeszcze sprawdzone.
-> Sprawdź to: przy wyłączonym wyciszeniu naciśnij w HA „Zamknij” na zamkniętym zamku. Jeśli zapiszczy,
-> włącz w blueprincie opcję **Powtarzaj zamykanie co interwał**. Wtedy zamek będzie piszczał przez cały alarm.
+gałkę, użył klucza albo otworzył z aplikacji Tuya), HA wysyła powiadomienie. Otwarcie z HA (panel,
+automatyzacja, asystent głosowy) powiadomienia nie wysyła. HA rozpoznaje to po kontekście zmiany stanu:
+zmiana zgłoszona przez sam zamek nie ma przypisanego użytkownika ani automatyzacji.
 
 ### Konfiguracja
 
@@ -129,9 +120,9 @@ kontekście zmiany stanu: zmiana zgłoszona przez sam zamek nie ma przypisanego 
 2. Zaimportuj blueprint: *Ustawienia → Automatyzacje i sceny → Blueprinty → Importuj blueprint* i wklej
    `https://github.com/jaroslaw-krolikowski/A1Pro/blob/master/blueprints/automation/a1pro/lock_arming_alarm.yaml`.
    Możesz też skopiować plik do `config/blueprints/automation/a1pro/`.
-3. Utwórz z niego automatyzację: wybierz zamek, pomocnika i przełącznik **Wyciszenie** zamka, włącz
-   **Zamknij zamek ponownie**. W polu **Powiadomienie** wklej (w trybie YAML) akcję aplikacji mobilnej HA.
-   `mobile_app_twoj_telefon` zamień na nazwę swojego telefonu z listy usług `notify`.
+3. Utwórz z niego automatyzację: wybierz zamek i pomocnika. W polu **Powiadomienie** wklej (w trybie YAML)
+   akcję aplikacji mobilnej HA. `mobile_app_twoj_telefon` zamień na nazwę swojego telefonu z listy
+   usług `notify`.
 
    Android (dźwięk alarmu także przy wyciszonym telefonie):
    ```yaml
@@ -157,12 +148,6 @@ kontekście zmiany stanu: zmiana zgłoszona przez sam zamek nie ma przypisanego 
              name: default
              critical: 1
              volume: 1.0
-   ```
-
-   W **Akcjach po zakończeniu alarmu** możesz z powrotem wyciszyć zamek:
-   ```yaml
-   - action: switch.turn_on
-     target: {entity_id: switch.twoj_zamek_wyciszenie}
    ```
 4. W opcjach integracji Tuya Local BLE włącz **Keep connected (24/7)**. Bez stałego połączenia HA
    dowiaduje się o ręcznym otwarciu dopiero przy kolejnym odświeżeniu, nawet po ok. 5 minutach.

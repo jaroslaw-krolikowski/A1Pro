@@ -11,7 +11,7 @@ Encje zamka:
 - wyciszenie i odciszenie (przełącznik),
 - poziom głośności (select),
 - automatyczne zamykanie i jego czas (przełącznik + liczba w sekundach),
-- tryb uzbrojenia: alarm w HA przy ręcznym otwarciu zamka (blueprint `blueprints/automation/a1pro/lock_arming_alarm.yaml`),
+- tryb uzbrojenia: powiadomienie z HA przy ręcznym otwarciu zamka (blueprint `blueprints/automation/a1pro/lock_arming_alarm.yaml`),
 - odświeżenie stanu i diagnostyka wszystkich DP,
 - usługa `tuya_local_ble.set_datapoint` do zapisu dowolnego DP.
 
