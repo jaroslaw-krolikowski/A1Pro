@@ -33,6 +33,11 @@ _LOGGER = logging.getLogger(__name__)
 # Raykube FD50 locks: after a lock/unlock command, ask the lock for its real
 # state once the motor has finished (it reports DP47 ~7 s after a command).
 RAYKUBE_STATE_REFRESH_DELAY = 12
+# After a restart a sleeping lock reports nothing until it is contacted, so
+# ask it for its state instead of showing "unknown" until the next command.
+RAYKUBE_STARTUP_REFRESH_DELAY = 20
+RAYKUBE_STARTUP_REFRESH_RETRY = 120
+RAYKUBE_STARTUP_REFRESH_ATTEMPTS = 3
 
 TuyaBLELockIsAvailable = Callable[["TuyaBLELock", TuyaBLEProductInfo], bool] | None
 
@@ -196,6 +201,7 @@ class TuyaBLELock(TuyaBLEEntity, LockEntity):
         self._datapoint_nop = None
         self._isjammed = False
         self._unsub_state_refresh: CALLBACK_TYPE | None = None
+        self._startup_refresh_attempts = 0
         self._keep_connect_stop = Event()
         self._keep_connect_thread: Thread | None = None
         self._update_attrs()
@@ -217,6 +223,11 @@ class TuyaBLELock(TuyaBLEEntity, LockEntity):
         while not self._keep_connect_stop.wait(self._mapping.keep_connect_timer):
             if self._datapoint_nop:
                 self._hass.create_task(self._datapoint_nop.set_value(True))
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        if self._device.product_id in ("hc7n0urm", "y2yaegze"):
+            self._schedule_startup_refresh(RAYKUBE_STARTUP_REFRESH_DELAY)
 
     async def async_will_remove_from_hass(self) -> None:
         """Stop keepalive thread when the entity is removed/reloaded."""
@@ -377,6 +388,25 @@ class TuyaBLELock(TuyaBLEEntity, LockEntity):
                 self._device.address,
                 exc_info=True,
             )
+
+    @callback
+    def _schedule_startup_refresh(self, delay: float) -> None:
+        if self._unsub_state_refresh is not None:
+            return  # a refresh after a command is already on its way
+        self._unsub_state_refresh = async_call_later(
+            self._hass, delay, self._async_startup_refresh
+        )
+
+    async def _async_startup_refresh(self, now: datetime) -> None:
+        self._unsub_state_refresh = None
+        if self._current_state != STATE_UNKNOWN:
+            return
+        self._startup_refresh_attempts += 1
+        await self._async_refresh_state(now)
+        # The answer arrives as a report; check again later and retry if the
+        # lock was out of reach.
+        if self._startup_refresh_attempts < RAYKUBE_STARTUP_REFRESH_ATTEMPTS:
+            self._schedule_startup_refresh(RAYKUBE_STARTUP_REFRESH_RETRY)
 
     def update_device_state(self):
         datapoint = self._device.datapoints[self._mapping.dp_id]

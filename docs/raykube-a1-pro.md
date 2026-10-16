@@ -124,10 +124,16 @@ Ręcznie, bez skryptu:
 Integracja instaluje własną kartę dashboardu. HA ładuje ją sam, bez HACS frontend i bez dodawania zasobów.
 Standardowego okna zamka w HA (z dużym przełącznikiem) integracja zmienić nie może, więc ta karta je zastępuje.
 
-- **Stuknięcie** w kafelek **przełącza** zamek: otwiera zamknięty, zamyka otwarty. Przycisk po prawej
-  pokazuje, co zrobi stuknięcie. Do czasu potwierdzenia przez zamek kręci się wskaźnik.
-- **Przytrzymanie** (albo strzałka po prawej) otwiera panel ze szczegółami:
-  - przyciski **Zamknij** i **Otwórz**. Wyróżniony jest ten, który zmienia aktualny stan;
+- **Tylko przycisk** po prawej zamyka albo otwiera zamek. Pokazuje, co zrobi: **Otwórz** przy zamkniętym,
+  **Zamknij** przy otwartym. Do czasu potwierdzenia przez zamek kręci się wskaźnik.
+  - **Otwarcie wymaga potwierdzenia.** Pierwsze stuknięcie zmienia przycisk na czerwony **Potwierdź**,
+    drzwi otwiera dopiero drugie stuknięcie w ciągu kilku sekund. Zamykanie działa od razu.
+    Potwierdzenie wyłącza `confirm_unlock: false`.
+  - Gdy stan jest nieznany (np. tuż po restarcie HA), przycisk zawsze **zamyka**, nigdy nie otwiera.
+- **Stuknięcie w resztę kafelka**, przytrzymanie albo strzałka otwiera panel ze szczegółami. Nie zmienia
+  stanu zamka:
+  - przyciski **Zamknij** i **Otwórz** (otwarcie też z potwierdzeniem). Wyróżniony jest ten,
+    który zmienia aktualny stan;
   - stan i czas ostatniej zmiany z informacją, skąd przyszła: *na zamku* (gałka, klucz, aplikacja,
     auto-zamknięcie), *z Home Assistant* albo *automatyzacja*;
   - bateria, auto-zamykanie i jego czas, tryb uzbrojenia, opcjonalnie siła sygnału;
@@ -142,7 +148,7 @@ type: custom:raykube-lock-card
 entity: lock.raykube_a1_ultra_d9f494_zamek
 name: Drzwi wejściowe                        # opcjonalnie
 arming_entity: input_boolean.zamek_uzbrojony # opcjonalnie, pomocnik trybu uzbrojenia
-confirm_unlock: false                        # opcjonalnie: true = otwarcie wymaga drugiego dotknięcia
+confirm_unlock: true                         # opcjonalnie: false = otwarcie bez potwierdzenia
 ```
 
 Wygląd jest wzorowany na shadcn/ui, a ikony to [Lucide](https://lucide.dev) wbudowane w kartę.
@@ -151,6 +157,9 @@ Karta dopasowuje się do jasnego i ciemnego motywu HA.
 Pozostałe encje zamka (bateria, auto-zamykanie, wyciszenie, przyciski) karta znajduje sama. Każdą można też
 wskazać ręcznie: `battery_entity`, `auto_lock_entity`, `auto_lock_time_entity`, `mute_entity`,
 `refresh_entity`, `calibrate_entity`, `signal_entity`.
+
+Ustawienia, których zamek jeszcze nie przesłał, karta pokazuje jako *Nieznany* (przerywany przełącznik,
+puste pole czasu). Przycisk **Odśwież** pobiera je z zamka.
 
 Po aktualizacji integracji odśwież stronę albo aplikację HA, żeby wczytać nową wersję karty.
 
@@ -311,6 +320,9 @@ Identyfikatory encji (`lock.twoj_zamek` itd.) podmień na swoje z ustawień urz�
 
 ## Ograniczenia
 
+- Po restarcie HA stan zamka i ustawień jest nieznany, dopóki zamek się nie odezwie. Dlatego ok. 20 s
+  po starcie integracja sama łączy się z zamkiem i pobiera stan. Jeśli zamek jest poza zasięgiem,
+  ponawia to co 2 minuty, maksymalnie 3 razy.
 - Zamek na baterie śpi między komendami. HA łączy się na żądanie, więc każda zmiana trwa kilka sekund.
   Stan ustawień odświeża się przy każdym połączeniu (snapshot), przyciskiem **Odśwież stan**
   albo na stałe przy opcji *Stałe połączenie (24/7)* w opcjach integracji (wtedy lepiej użyć ESPHome BLE proxy).

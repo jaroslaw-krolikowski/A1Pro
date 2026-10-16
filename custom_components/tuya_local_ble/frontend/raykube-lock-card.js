@@ -1,15 +1,16 @@
 /*
  * Raykube Lock card, shipped with the tuya_local_ble integration.
  *
- * Tile: tap toggles the lock (unlocks when locked, locks otherwise), long
- * press or the chevron opens a panel with lock/unlock, battery, the time and
- * source of the last change, settings, calibration and recent history.
+ * Tile: only the button locks / unlocks (unlocks when locked, locks
+ * otherwise); unlocking needs a second tap to confirm. A tap anywhere else
+ * opens a panel with lock/unlock, battery, the time and source of the last
+ * change, settings, calibration and recent history.
  *
  *   type: custom:raykube-lock-card
  *   entity: lock.raykube_a1_ultra_d9f494_zamek
  *   name: Drzwi wejściowe                          # optional
  *   arming_entity: input_boolean.zamek_uzbrojony   # optional
- *   confirm_unlock: false                          # optional, second tap to unlock
+ *   confirm_unlock: true                           # optional, false = unlock on first tap
  *
  * Related entities of the same device are found by translation key; any of
  * them can be overridden with battery_entity, auto_lock_entity,
@@ -19,7 +20,7 @@
  * Look follows shadcn/ui; icons are Lucide (https://lucide.dev, ISC license).
  */
 
-const CARD_VERSION = "1.1.0";
+const CARD_VERSION = "1.3.0";
 const HOLD_MS = 500;
 const CONFIRM_MS = 4000;
 const PENDING_TIMEOUT_MS = 20000;
@@ -38,7 +39,8 @@ const STRINGS = {
     lock: "Zamknij",
     unlock: "Otwórz",
     confirm_unlock: "Potwierdź otwarcie",
-    tap_hint: "Dotknij, aby zamknąć lub otworzyć · przytrzymaj, aby zobaczyć więcej",
+    confirm_short: "Potwierdź",
+    tap_hint: "Dotknij, aby zobaczyć szczegóły",
     battery: "Bateria",
     battery_high: "Wysoki",
     battery_normal: "Średni",
@@ -66,6 +68,8 @@ const STRINGS = {
     source_device: "na zamku",
     on: "Wł.",
     off: "Wył.",
+    unknown_value: "Nieznany",
+    settings_unknown: "Zamek nie przesłał jeszcze ustawień. Naciśnij Odśwież.",
     close: "Zamknij panel",
     more: "Szczegóły",
     just_now: "przed chwilą",
@@ -84,7 +88,8 @@ const STRINGS = {
     lock: "Lock",
     unlock: "Unlock",
     confirm_unlock: "Confirm unlock",
-    tap_hint: "Tap to lock or unlock · hold for more",
+    confirm_short: "Confirm",
+    tap_hint: "Tap for details",
     battery: "Battery",
     battery_high: "High",
     battery_normal: "Medium",
@@ -112,6 +117,8 @@ const STRINGS = {
     source_device: "at the lock",
     on: "On",
     off: "Off",
+    unknown_value: "Unknown",
+    settings_unknown: "The lock has not reported its settings yet. Press Refresh.",
     close: "Close panel",
     more: "Details",
     just_now: "just now",
@@ -244,6 +251,15 @@ function lockVisual(state) {
   }
 }
 
+/** "on" / "off" state of a switch-like entity, or null when the lock has not reported it. */
+function onOff(entity) {
+  return entity && (entity.state === "on" || entity.state === "off") ? entity.state : null;
+}
+
+function isNumber(entity) {
+  return Boolean(entity) && entity.state !== "" && !Number.isNaN(Number(entity.state));
+}
+
 /** What a tap on the tile does in this state. */
 function toggleTarget(state) {
   return state === "locked" ? "unlock" : "lock";
@@ -309,7 +325,7 @@ class RaykubeLockCard extends HTMLElement {
     const lock = Object.values(hass.entities || {}).find(
       (e) => e.platform === "tuya_local_ble" && e.entity_id.startsWith("lock.")
     );
-    return { entity: lock ? lock.entity_id : "" };
+    return { entity: lock ? lock.entity_id : "", confirm_unlock: true };
   }
 
   static getConfigForm() {
@@ -327,7 +343,8 @@ class RaykubeLockCard extends HTMLElement {
     if (!config || !config.entity || !String(config.entity).startsWith("lock.")) {
       throw new Error("Podaj encję zamka: entity: lock.…");
     }
-    this._config = { ...config };
+    // Unlock confirmation is on unless explicitly turned off.
+    this._config = { ...config, confirm_unlock: config.confirm_unlock !== false };
     this._rendered = false;
   }
 
@@ -468,6 +485,8 @@ class RaykubeLockCard extends HTMLElement {
           .meta .state { color: var(--rk-tone); font-weight: 500; }
           .meta .sep { opacity: .5; }
           .action { min-width: 92px; }
+          /* A tap on the disabled button must not fall through and open the panel. */
+          .action:disabled { pointer-events: auto; cursor: default; }
           .more { color: var(--rk-muted-foreground); }
         </style>
         <ha-card tabindex="0" role="button">
@@ -476,7 +495,7 @@ class RaykubeLockCard extends HTMLElement {
             <div class="title"><span class="name"></span><span class="battery"></span></div>
             <div class="meta"></div>
           </div>
-          <button class="btn btn-sm action" tabindex="-1"></button>
+          <button class="btn btn-sm action"></button>
           <button class="btn btn-ghost btn-icon btn-sm more">${icon("chevron-up", 16)}</button>
         </ha-card>`;
       this._bindGestures();
@@ -516,9 +535,10 @@ class RaykubeLockCard extends HTMLElement {
     const confirming = this.confirming("tile");
     action.className = `btn btn-sm action ${confirming ? "btn-destructive" : target === "unlock" ? "btn-outline" : "btn-default"}`;
     action.disabled = state === "unavailable" || Boolean(pending);
+    action.setAttribute("aria-label", confirming ? t.confirm_unlock : t[target]);
     action.innerHTML = pending
       ? `${icon("loader", 14, "spin")}<span>${esc(t[pending])}</span>`
-      : `${icon(target === "unlock" ? "lock-open" : "lock", 14)}<span>${esc(confirming ? t.confirm_unlock : t[target])}</span>`;
+      : `${icon(target === "unlock" ? "lock-open" : "lock", 14)}<span>${esc(confirming ? t.confirm_short : t[target])}</span>`;
     const more = root.querySelector(".more");
     more.setAttribute("aria-label", t.more);
     more.title = t.more;
@@ -527,6 +547,8 @@ class RaykubeLockCard extends HTMLElement {
   _bindGestures() {
     const card = this.shadowRoot.querySelector("ha-card");
     const more = this.shadowRoot.querySelector(".more");
+    const action = this.shadowRoot.querySelector(".action");
+    const onButton = (ev) => ev.composedPath().some((n) => n === more || n === action);
     let timer = null;
     let held = false;
     let start = null;
@@ -538,7 +560,7 @@ class RaykubeLockCard extends HTMLElement {
     };
 
     card.addEventListener("pointerdown", (ev) => {
-      if (ev.button !== 0 || ev.composedPath().includes(more)) return;
+      if (ev.button !== 0 || onButton(ev)) return;
       held = false;
       start = { x: ev.clientX, y: ev.clientY };
       card.classList.add("pressed");
@@ -556,11 +578,11 @@ class RaykubeLockCard extends HTMLElement {
       }
     });
     card.addEventListener("pointerup", (ev) => {
-      if (!start || ev.composedPath().includes(more)) return;
+      if (!start || onButton(ev)) return;
       const wasHeld = held;
       cancel();
       start = null;
-      if (!wasHeld) this._tap();
+      if (!wasHeld) this._openPanel();
     });
     card.addEventListener("pointercancel", () => {
       cancel();
@@ -568,14 +590,19 @@ class RaykubeLockCard extends HTMLElement {
     });
     card.addEventListener("contextmenu", (ev) => ev.preventDefault());
     card.addEventListener("keydown", (ev) => {
+      if (ev.composedPath()[0] !== card) return; // the buttons handle their own keys
       if (ev.key === "Enter" || ev.key === " ") {
         ev.preventDefault();
-        this._tap();
+        this._openPanel();
       }
     });
     more.addEventListener("click", (ev) => {
       ev.stopPropagation();
       this._openPanel();
+    });
+    action.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      this._tap();
     });
   }
 
@@ -727,7 +754,10 @@ class RaykubeLockPanel extends HTMLElement {
         }
         .switch[aria-checked=true] { background: var(--rk-foreground); }
         .switch[aria-checked=true]::after { transform: translateX(16px); }
+        .switch[aria-checked=mixed] { border: 2px dashed var(--rk-border); background: transparent; }
+        .switch[aria-checked=mixed]::after { transform: translateX(8px); background: var(--rk-muted-foreground); opacity: .4; box-shadow: none; }
         .switch:focus-visible { outline: 2px solid var(--rk-ring); outline-offset: 2px; }
+        .row.hint { font-size: 13px; color: var(--rk-muted-foreground); padding-top: 10px; padding-bottom: 10px; }
         .event { display: flex; align-items: center; gap: 12px; padding: 10px 14px; }
         .event + .event { border-top: 1px solid var(--rk-border); }
         .event .tint { width: 30px; height: 30px; border-radius: 8px; }
@@ -880,8 +910,9 @@ class RaykubeLockPanel extends HTMLElement {
     const autoLock = r.auto_lock && hass.states[r.auto_lock];
     const autoTime = r.auto_lock_time && hass.states[r.auto_lock_time];
     if (autoLock) {
+      const on = onOff(autoLock);
       stats.push([t.stat_auto_lock, "timer",
-        autoLock.state === "on" ? (autoTime ? `${autoTime.state} ${t.seconds}` : t.on) : t.off]);
+        on === "on" ? (isNumber(autoTime) ? `${autoTime.state} ${t.seconds}` : t.on) : on === "off" ? t.off : t.unknown_value]);
     }
     const arming = r.arming && hass.states[r.arming];
     if (arming) {
@@ -897,11 +928,14 @@ class RaykubeLockPanel extends HTMLElement {
 
     // Settings
     const rows = [];
+    let unknown = false;
     const toggle = (act, ic, label, entity) => {
       if (!entity) return;
-      const on = entity.state === "on";
+      const on = onOff(entity);
+      if (!on) unknown = true;
+      const checked = on === "on" ? "true" : on === "off" ? "false" : "mixed";
       rows.push(`<div class="row">${icon(ic, 18)}<span class="label">${esc(label)}</span>
-        <button class="switch" role="switch" aria-checked="${on}" aria-label="${esc(label)}" data-act="${act}"></button></div>`);
+        <button class="switch" role="switch" aria-checked="${checked}" aria-label="${esc(label)}" data-act="${act}"></button></div>`);
     };
     toggle("arming", "shield", t.arming, arming);
     toggle("auto_lock", "timer", t.auto_lock, autoLock);
@@ -909,10 +943,11 @@ class RaykubeLockPanel extends HTMLElement {
     if (autoTime) {
       const a = autoTime.attributes || {};
       const existing = root.querySelector('[data-act="auto_lock_time"]');
-      const value = focused && existing ? existing.value : autoTime.state;
+      if (!isNumber(autoTime)) unknown = true;
+      const value = focused && existing ? existing.value : isNumber(autoTime) ? autoTime.state : "";
       rows.push(`<div class="row">${icon("timer", 18)}<span class="label">${esc(t.auto_lock_after)}</span>
         <input class="input" type="number" inputmode="numeric" data-act="auto_lock_time"
-          min="${esc(a.min ?? 1)}" max="${esc(a.max ?? 1800)}" step="${esc(a.step ?? 1)}" value="${esc(value)}">
+          min="${esc(a.min ?? 1)}" max="${esc(a.max ?? 1800)}" step="${esc(a.step ?? 1)}" value="${esc(value)}" placeholder="—">
         <span class="unit">${esc(t.seconds)}</span></div>`);
     }
     toggle("mute", "volume-x", t.mute, r.mute && hass.states[r.mute]);
@@ -925,6 +960,7 @@ class RaykubeLockPanel extends HTMLElement {
       rows.push(`<div class="row">${icon("crosshair", 18)}<span class="label">${esc(t.calibrate)}</span>
         <button class="btn btn-sm ${armed ? "btn-destructive" : "btn-outline"}" data-act="calibrate">${esc(armed ? t.confirm_calibrate : t.calibrate_action)}</button></div>`);
     }
+    if (unknown && r.refresh) rows.push(`<div class="row hint">${icon("circle-help", 18)}<span>${esc(t.settings_unknown)}</span></div>`);
     const settings = root.querySelector(".settings");
     const html = rows.join("");
     if (settings._html !== html && !focused) {
@@ -985,7 +1021,7 @@ if (!customElements.get("raykube-lock-card")) {
   window.customCards.push({
     type: "raykube-lock-card",
     name: "Raykube Lock",
-    description: "Dotknij, aby zamknąć lub otworzyć; przytrzymaj, aby zobaczyć szczegóły i ustawienia zamka.",
+    description: "Przycisk zamyka lub otwiera zamek (otwarcie z potwierdzeniem); dotknięcie kafelka pokazuje szczegóły i ustawienia.",
     preview: true,
     documentationURL: "https://github.com/jaroslaw-krolikowski/A1Pro/blob/master/docs/raykube-a1-pro.md",
   });
