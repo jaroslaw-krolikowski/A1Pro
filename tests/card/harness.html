@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  /* Home Assistant dark theme variables (subset). */
+  :root {
+    --primary-color: #03a9f4; --primary-text-color: #e1e1e1; --secondary-text-color: #9b9b9b;
+    --card-background-color: #1c1c1c; --ha-card-background: #1c1c1c; --ha-card-border-radius: 12px;
+    --secondary-background-color: #282828; --divider-color: rgba(225,225,225,.12);
+    --success-color: #43a047; --error-color: #db4437; --warning-color: #ffa600;
+    --disabled-text-color: #6f6f6f; --text-primary-color: #fff;
+  }
+  body { margin: 0; padding: 16px; background: #111111; color: var(--primary-text-color);
+         font-family: Roboto, "Segoe UI", sans-serif; }
+</style>
+<script>
+  // Minimal stand-ins for HA's ha-card and ha-icon.
+  customElements.define("ha-card", class extends HTMLElement {
+    constructor() {
+      super();
+      // Like HA's ha-card: styles on :host, so the card's own CSS can override them.
+      this.attachShadow({ mode: "open" }).innerHTML = `<style>:host { display: block;
+        background: var(--ha-card-background); border-radius: 12px; border: 1px solid #2f2f2f; }</style><slot></slot>`;
+    }
+  });
+  const GLYPHS = { "mdi:lock": "🔒", "mdi:lock-open-variant": "🔓", "mdi:lock-clock": "⏳",
+    "mdi:lock-alert": "⚠", "mdi:lock-question": "?", "mdi:battery": "🔋", "mdi:battery-50": "🔋",
+    "mdi:battery-alert": "🪫", "mdi:chevron-up": "⌃", "mdi:close": "✕", "mdi:shield-lock": "🛡",
+    "mdi:shield-off-outline": "🛡", "mdi:timer-lock": "⏱", "mdi:volume-off": "🔇",
+    "mdi:refresh": "↻", "mdi:tune-vertical": "🎚", "mdi:bluetooth": "ᛒ" };
+  customElements.define("ha-icon", class extends HTMLElement {
+    static get observedAttributes() { return ["icon"]; }
+    attributeChangedCallback() { this.textContent = GLYPHS[this.getAttribute("icon")] || "•"; }
+    connectedCallback() { this.style.display = "inline-flex"; this.style.lineHeight = "1";
+      this.style.fontSize = "var(--mdc-icon-size, 24px)"; this.attributeChangedCallback(); }
+  });
+</script>
+<script src="../../custom_components/tuya_local_ble/frontend/raykube-lock-card.js"></script>
+</head>
+<body>
+<div id="host" style="max-width: 480px"></div>
+<script>
+  const now = Date.now();
+  const iso = (msAgo) => new Date(now - msAgo).toISOString();
+  const states = {
+    "lock.raykube_a1_ultra_d9f494_zamek": { entity_id: "lock.raykube_a1_ultra_d9f494_zamek", state: "locked",
+      last_changed: iso(15 * 60e3), context: { id: "c1", user_id: null, parent_id: null },
+      attributes: { friendly_name: "Raykube A1 Ultra D9F494 Zamek" } },
+    "sensor.bateria": { state: "high", attributes: {} },
+    "switch.auto": { state: "on", attributes: {} },
+    "number.czas": { state: "30", attributes: { min: 1, max: 1800, step: 1 } },
+    "switch.mute": { state: "on", attributes: {} },
+    "button.refresh": { state: "unknown", attributes: {} },
+    "button.calibrate": { state: "unknown", attributes: {} },
+    "input_boolean.zamek_uzbrojony": { state: "off", attributes: {} },
+  };
+  const entities = {
+    "lock.raykube_a1_ultra_d9f494_zamek": { entity_id: "lock.raykube_a1_ultra_d9f494_zamek", device_id: "d1", translation_key: "manual_lock", platform: "tuya_local_ble" },
+    "sensor.bateria": { entity_id: "sensor.bateria", device_id: "d1", translation_key: "battery_state", platform: "tuya_local_ble" },
+    "switch.auto": { entity_id: "switch.auto", device_id: "d1", translation_key: "automatic_lock", platform: "tuya_local_ble" },
+    "number.czas": { entity_id: "number.czas", device_id: "d1", translation_key: "auto_lock_time", platform: "tuya_local_ble" },
+    "switch.mute": { entity_id: "switch.mute", device_id: "d1", translation_key: "mute", platform: "tuya_local_ble" },
+    "button.refresh": { entity_id: "button.refresh", device_id: "d1", translation_key: "refresh_status", platform: "tuya_local_ble" },
+    "button.calibrate": { entity_id: "button.calibrate", device_id: "d1", translation_key: "calibrate", platform: "tuya_local_ble" },
+  };
+  window.calls = [];
+  window.makeHass = () => ({
+    states, entities, locale: { language: "pl" }, language: "pl",
+    callService: (domain, service, data) => { window.calls.push([domain, service, data]); return Promise.resolve(); },
+    callWS: async (msg) => {
+      window.calls.push(["ws", msg.type, msg.entity_ids]);
+      const t = (h) => (now - h * 3600e3) / 1000;
+      return [
+        { when: t(30), state: "unlocked", context_user_id: "u1" },
+        { when: t(29.9), state: "locked", context_event_type: "automation_triggered", context_domain: "automation" },
+        { when: t(3), state: "unlocked" },
+        { when: t(0.25), state: "locked" },
+      ];
+    },
+  });
+  const card = document.createElement("raykube-lock-card");
+  card.setConfig({ entity: "lock.raykube_a1_ultra_d9f494_zamek", name: "Drzwi wejściowe",
+                   arming_entity: "input_boolean.zamek_uzbrojony" });
+  card.hass = window.makeHass();
+  document.getElementById("host").appendChild(card);
+  window.card = card;
+</script>
+</body>
+</html>

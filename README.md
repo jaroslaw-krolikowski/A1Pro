@@ -12,6 +12,7 @@ Encje zamka:
 - poziom głośności (select),
 - automatyczne zamykanie i jego czas (przełącznik + liczba w sekundach),
 - tryb uzbrojenia: powiadomienie z HA przy ręcznym otwarciu zamka (blueprint `blueprints/automation/a1pro/lock_arming_alarm.yaml`),
+- karta dashboardu „Raykube Lock” (stuknięcie zamyka, przytrzymanie otwiera panel ze szczegółami),
 - odświeżenie stanu i diagnostyka wszystkich DP,
 - usługa `tuya_local_ble.set_datapoint` do zapisu dowolnego DP.
 
@@ -27,7 +28,8 @@ Pozostałe urządzenia z upstreamu działają bez zmian. Ich opis jest w [docs/U
 
 ```bash
 pip install bleak bleak-retry-connector pycryptodome pytest
-pytest tests   # test blueprintu uruchamia się, gdy zainstalowany jest homeassistant
+pytest tests   # testy z HA uruchamiają się, gdy zainstalowany jest homeassistant
+node tests/card/test_card.mjs   # test karty w przeglądarce (playwright + chromium)
 ```
 
 ## Licencja
