@@ -112,7 +112,17 @@ Ręcznie, bez skryptu:
 
 Model DP `hc7n0urm` w chmurze Tuya nie ma DP o nazwie kojarzącej się z uzbrojeniem (ani DP11).
 Kandydaci z modelu to `special_control` (DP78, bool) i opcje `special_function` (DP68, enum).
-Najprościej ustalić to przez chmurę:
+Najpierw sprawdź historię zmian DP z ostatnich dni (chmura Tuya przechowuje ją ok. 7 dni):
+
+```bash
+python3 tools/tuya_export.py --logs 7
+```
+
+Na końcu wyniku skrypt wypisze ustawienia (`rw`), które zmieniały wartość. Jeśli w tym czasie
+przełączałeś tryb uzbrojenia w aplikacji, będzie tam jego DP. Historia obejmuje tylko DP zadeklarowane
+w modelu Tuya. Ten sposób zaczerpnąłem z `Cloud.getdevicelog` w [TinyTuya](https://github.com/jasonacox/tinytuya).
+
+Jeśli historia nic nie pokazuje:
 
 1. Uruchom `python3 tools/tuya_export.py` i zapisz tabelę DP (kolumna „wartość”).
 2. W aplikacji Tuya/Smart Life przełącz **tryb uzbrojenia**. Zmieniaj tylko to jedno ustawienie.
