@@ -88,6 +88,9 @@ async def init_user_flow(hass: HomeAssistant, discovered: list) -> dict:
         return_value=discovered,
     ), patch(
         "homeassistant.setup.async_process_deps_reqs", return_value=None
+    ), patch(
+        # bluetooth_adapters / frontend / http cannot start in this bare core.
+        "homeassistant.setup._async_process_dependencies", return_value=[]
     ):
         return await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": config_entries.SOURCE_USER}

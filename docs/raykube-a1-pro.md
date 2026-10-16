@@ -115,6 +115,36 @@ Ręcznie, bez skryptu:
   kod `ble_unlock_check`. Bez niego zamykanie działa, ale otwieranie nie.
 - MAC bywa zapisany w aplikacji „od tyłu”. Jeśli zamek nie jest wykrywany, odwróć kolejność bajtów.
 
+## Karta „Raykube Lock”
+
+Integracja instaluje własną kartę dashboardu. HA ładuje ją sam, bez HACS frontend i bez dodawania zasobów.
+Standardowego okna zamka w HA (z dużym przełącznikiem) integracja zmienić nie może, więc ta karta je zastępuje.
+
+- **Stuknięcie** w kafelek **zamyka** zamek. Otwieranie z kafelka celowo nie jest możliwe.
+- **Przytrzymanie** (albo strzałka po prawej) otwiera panel ze szczegółami:
+  - przyciski **Zamknij** i **Otwórz**. Otwórz wymaga drugiego dotknięcia „Potwierdź otwarcie”;
+  - stan i czas ostatniej zmiany z informacją, skąd przyszła: *na zamku* (gałka, klucz, aplikacja,
+    auto-zamknięcie), *z Home Assistant* albo *automatyzacja*;
+  - bateria, auto-zamykanie i jego czas, tryb uzbrojenia, opcjonalnie siła sygnału;
+  - ustawienia: tryb uzbrojenia, auto-zamykanie, czas, wyciszenie, odświeżenie stanu, kalibracja
+    (z potwierdzeniem);
+  - ostatnie zdarzenia z 48 h.
+
+Dodanie: *Edytuj dashboard → Dodaj kartę →* wyszukaj **Raykube Lock**. Albo w YAML:
+
+```yaml
+type: custom:raykube-lock-card
+entity: lock.raykube_a1_ultra_d9f494_zamek
+name: Drzwi wejściowe                        # opcjonalnie
+arming_entity: input_boolean.zamek_uzbrojony # opcjonalnie, pomocnik trybu uzbrojenia
+```
+
+Pozostałe encje zamka (bateria, auto-zamykanie, wyciszenie, przyciski) karta znajduje sama. Każdą można też
+wskazać ręcznie: `battery_entity`, `auto_lock_entity`, `auto_lock_time_entity`, `mute_entity`,
+`refresh_entity`, `calibrate_entity`, `signal_entity`.
+
+Po aktualizacji integracji odśwież stronę albo aplikację HA, żeby wczytać nową wersję karty.
+
 ## Tryb uzbrojenia (powiadomienie w Home Assistant)
 
 Zamek nie ma własnego trybu uzbrojenia (sprawdzone na pełnym modelu DP `hc7n0urm`), więc tryb uzbrojenia

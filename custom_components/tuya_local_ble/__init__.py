@@ -1,8 +1,10 @@
 """The Tuya BLE integration."""
 from __future__ import annotations
 
+import hashlib
 import logging
 import time
+from pathlib import Path
 
 import voluptuous as vol
 
@@ -16,6 +18,7 @@ from homeassistant.core import Event, HomeAssistant, ServiceCall, callback
 from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers.typing import ConfigType
 
 from .tuya_ble import TuyaBLEDataPointType, TuyaBLEDevice
 
@@ -38,6 +41,37 @@ PLATFORMS: list[Platform] = [
 _LOGGER = logging.getLogger(__name__)
 
 SERVICE_SET_DATAPOINT = "set_datapoint"
+
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
+# Lovelace card shipped with the integration (custom:raykube-lock-card).
+CARD_FILE = Path(__file__).parent / "frontend" / "raykube-lock-card.js"
+CARD_URL = f"/{DOMAIN}/raykube-lock-card.js"
+
+
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """Serve the lock card and load it in the frontend."""
+    await _async_register_card(hass)
+    return True
+
+
+async def _async_register_card(hass: HomeAssistant) -> None:
+    if hass.http is None:
+        return
+    from homeassistant.components.frontend import add_extra_js_url
+    from homeassistant.components.http import StaticPathConfig
+
+    try:
+        content = await hass.async_add_executor_job(CARD_FILE.read_bytes)
+    except OSError:
+        _LOGGER.error("Lock card file %s is missing", CARD_FILE)
+        return
+    # Content hash in the URL so browsers pick up a new card after updates.
+    version = hashlib.sha256(content).hexdigest()[:8]
+    await hass.http.async_register_static_paths(
+        [StaticPathConfig(CARD_URL, str(CARD_FILE), False)]
+    )
+    add_extra_js_url(hass, f"{CARD_URL}?v={version}")
 
 DATAPOINT_TYPES = {
     "bool": TuyaBLEDataPointType.DT_BOOL,
