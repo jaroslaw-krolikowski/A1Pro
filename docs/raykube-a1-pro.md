@@ -79,6 +79,27 @@ Blok `raykube` jest opcjonalny. Wszystkie klucze:
 
 ### Skąd wziąć dane
 
+Najprościej skryptem `tools/tuya_export.py` (Python 3.9+, bez dodatkowych pakietów). Pobiera z Tuya Cloud
+wszystkie potrzebne pola, w tym `ble_unlock_check` i pełny model DP, i zapisuje gotowy
+`tuya_export/devices.json` razem z blokiem `raykube` dopasowanym do Twojego zamka.
+
+1. Załóż konto na [platform.tuya.com](https://platform.tuya.com). Utwórz *Cloud → Development → Create Cloud Project*,
+   z data center *Central Europe* dla kont z Polski.
+2. W projekcie: *Service API* → upewnij się, że jest subskrybowane **IoT Core**.
+   *Devices → Link App Account* → zeskanuj kod QR aplikacją Smart Life/Tuya (Ja → ikona skanowania).
+3. Z zakładki *Overview* skopiuj **Access ID** i **Access Secret**, potem uruchom:
+
+```bash
+export TUYA_ACCESS_ID=...  TUYA_ACCESS_SECRET=...  TUYA_REGION=eu
+python3 tools/tuya_export.py
+```
+
+Skrypt wypisze listę DP zamka (numer, kod, typ, zakres, aktualna wartość). Wskaże też kandydata na tryb
+uzbrojenia, jeśli model zawiera taki DP. Plik `tuya_export/devices.json` skopiuj do
+`config/tuya_local_ble/devices.json`. Pliki w `tuya_export/` zawierają klucze, dlatego są w `.gitignore`.
+
+Ręcznie, bez skryptu:
+
 - `local_key`, `uuid`, `device_id`, `product_id`, MAC: `python -m tinytuya wizard`
   ([TinyTuya](https://github.com/jasonacox/tinytuya)). W wygenerowanym `devices.json` jest też
   sekcja `mapping` z listą DP. **Sprawdź w niej zakres `beep_volume`.** Jeśli to np. `["mute","normal"]`,

@@ -1,3 +1,5 @@
 .DS_Store
 __pycache__/
 .pytest_cache/
+# Output of tools/tuya_export.py (contains local_key / ble_unlock_check)
+tuya_export/

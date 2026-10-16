@@ -15,6 +15,8 @@ Encje zamka:
 - odświeżenie stanu i diagnostyka wszystkich DP,
 - usługa `tuya_local_ble.set_datapoint` do zapisu dowolnego DP.
 
+Dane z Tuya Cloud (klucze, `ble_unlock_check`, lista DP) pobiera `python3 tools/tuya_export.py`.
+
 Instalacja, konfiguracja `devices.json`, skąd wziąć klucze i jak potwierdzić DP trybu uzbrojenia:
 **[docs/raykube-a1-pro.md](docs/raykube-a1-pro.md)**.
 
