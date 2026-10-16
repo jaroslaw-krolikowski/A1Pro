@@ -234,6 +234,8 @@ Identyfikatory encji (`lock.twoj_zamek` itd.) podmień na swoje z ustawień urz�
   Stan ustawień odświeża się przy każdym połączeniu (snapshot), przyciskiem **Odśwież stan**
   albo na stałe przy opcji *Keep connected (24/7)* w opcjach integracji (wtedy lepiej użyć ESPHome BLE proxy).
 - Aplikacja Tuya/Smart Life i HA nie mogą być połączone z zamkiem jednocześnie.
+- Po komendzie zamknij/otwórz HA od razu pokazuje stan docelowy, a ok. 12 s później odpytuje zamek
+  i pokazuje jego faktyczny stan. Przydaje się to, gdy zamek był chwilę wcześniej przekręcony ręcznie.
 - Na części egzemplarzy z firmware 5.6 `ble_unlock_check` zmienia się po każdym otwarciu z aplikacji
   i otwieranie z HA przestaje działać. Zobacz [ShonP40/Tuya-BLE#17](https://github.com/ShonP40/Tuya-BLE/issues/17).
 - Encja *Kierunek zamka* (DP48) pochodzi z upstreamu. W profilu tuya-local kierunek
