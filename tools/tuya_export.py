@@ -362,7 +362,8 @@ def main() -> int:
             if len(arming_candidates) > 1:
                 print("Kilka kandydatów: wpisz właściwy w raykube.dps.arming.")
         elif details.get("category") == "jtmspro":
-            print("\nModel nie zawiera DP trybu uzbrojenia o znanej nazwie — zostaje domyślny DP11 "
+            print("\nModel nie zawiera DP trybu uzbrojenia o znanej nazwie. Przełącznik trybu "
+                  "uzbrojenia pojawi się w HA dopiero po wpisaniu raykube.dps.arming "
                   "(sprawdź według docs/raykube-a1-pro.md).")
 
     (out_dir / "devices.json").write_text(

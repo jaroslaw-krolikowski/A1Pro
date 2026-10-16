@@ -8,12 +8,12 @@ Ten fork [ShonP40/Tuya-BLE](https://github.com/ShonP40/Tuya-BLE) dodaje do zamk�
 | Encja HA (nazwa PL / EN) | Funkcja | DP | Typ | Pewność |
 |---|---|---|---|---|
 | lock: Zamek / Lock Control | otwieranie / zamykanie | 71 (otwarcie), 46 (zamknięcie) | raw / bool | potwierdzone fizycznie (upstream) |
-| select: Głośność zamka / Lock Volume | głośność: mute / low / normal / high | 31 | enum | DP z chmury Tuya i snapshotu BLE |
+| select: Głośność zamka / Lock Volume | głośność: `hc7n0urm` mute / normal, `rlyxv7pe` mute / low / normal / high | 31 | enum | model DP z chmury Tuya |
 | switch: Wyciszenie / Mute | wycisz / odcisz | 31 | enum | j.w. Odciszenie przywraca ostatni poziom |
 | switch: Automatyczne zamykanie / Auto Lock | auto-zamykanie po otwarciu | 33 | bool | DP z chmury Tuya i snapshotu BLE |
 | number: Czas automatycznego zamknięcia / Auto lock delay | opóźnienie auto-zamknięcia (s) | 36 | value | DP z chmury Tuya i snapshotu BLE |
 | button: Kalibracja / Calibrate | kalibracja zamka | 68 = `function1` | enum | wg profilu tuya-local (`Recalibrate`) |
-| switch: Tryb uzbrojenia / Arming mode | tryb uzbrojenia (alarm przy ręcznym przekręceniu) | **11** | bool | **niepotwierdzone, sprawdź niżej** |
+| switch: Tryb uzbrojenia / Arming mode | tryb uzbrojenia (alarm przy ręcznym przekręceniu) | **do ustalenia** | bool | tworzony dopiero po wpisaniu DP, sprawdź niżej |
 | button: Odśwież stan / Refresh status | łączy się z zamkiem i pobiera pełny stan | – | – | – |
 | sensor: Datapointy / Datapoints | wszystkie DP odebrane z zamka (atrybuty) | – | – | diagnostyka |
 
@@ -52,9 +52,9 @@ Ten fork wysyła ją jako `enum`.
     "ble_unlock_check": "<base64 z Tuya Cloud>",
     "raykube": {
       "dps": {
-        "arming": 11
+        "arming": 78
       },
-      "beep_volume_options": ["mute", "low", "normal", "high"],
+      "beep_volume_options": ["mute", "normal"],
       "unmute_level": "normal"
     }
   }
@@ -69,8 +69,8 @@ Blok `raykube` jest opcjonalny. Wszystkie klucze:
 | `dps.automatic_lock` | 33 | DP przełącznika auto-zamykania |
 | `dps.auto_lock_time` | 36 | DP czasu auto-zamykania |
 | `dps.special_function` | 68 | DP kalibracji |
-| `dps.arming` | 11 | DP trybu uzbrojenia |
-| `beep_volume_options` | `["mute","low","normal","high"]` | poziomy głośności w kolejności z chmury Tuya |
+| `dps.arming` | brak | DP trybu uzbrojenia (bez niego przełącznik nie powstaje) |
+| `beep_volume_options` | `hc7n0urm`: `["mute","normal"]`, inne: `["mute","low","normal","high"]` | poziomy głośności w kolejności z chmury Tuya |
 | `unmute_level` | `normal` | poziom po odciszeniu, gdy nie znamy poprzedniego |
 | `calibrate_value` | 0 | indeks wartości DP68 wysyłany przy kalibracji (`function1` = 0) |
 | `auto_lock_time_min` / `auto_lock_time_max` | 1 / 1800 | zakres pola czasu (s) |
@@ -110,15 +110,18 @@ Ręcznie, bez skryptu:
 
 ## Weryfikacja DP trybu uzbrojenia
 
-DP11 to jedyny niewyjaśniony przełącznik bool w snapshocie `hc7n0urm`, ale nikt nie potwierdził
-publicznie, że to tryb uzbrojenia. Sprawdź to tak:
+Model DP `hc7n0urm` w chmurze Tuya nie ma DP o nazwie kojarzącej się z uzbrojeniem (ani DP11).
+Kandydaci z modelu to `special_control` (DP78, bool) i opcje `special_function` (DP68, enum).
+Najprościej ustalić to przez chmurę:
 
-1. W HA naciśnij **Odśwież stan** i zapisz atrybuty sensora **Datapointy** (Narzędzia deweloperskie → Stany).
-2. Zamknij HA na chwilę albo wyłącz integrację (zamek obsługuje jedno połączenie BLE naraz).
-   W aplikacji Tuya/Smart Life przełącz **tryb uzbrojenia**. Zmieniaj tylko to jedno ustawienie.
-3. Zamknij aplikację, włącz integrację, naciśnij **Odśwież stan** i porównaj atrybuty.
-   DP, który zmienił wartość, to tryb uzbrojenia.
-4. Jeśli to nie `dp_11`, wpisz właściwy numer w `"raykube": {"dps": {"arming": <nr>}}` i zrestartuj HA.
+1. Uruchom `python3 tools/tuya_export.py` i zapisz tabelę DP (kolumna „wartość”).
+2. W aplikacji Tuya/Smart Life przełącz **tryb uzbrojenia**. Zmieniaj tylko to jedno ustawienie.
+   Poczekaj, aż aplikacja połączy się z zamkiem.
+3. Uruchom skrypt ponownie i porównaj wartości. DP, który się zmienił, to tryb uzbrojenia.
+4. Jeśli to DP typu bool, wpisz go w `"raykube": {"dps": {"arming": <nr>}}` i zrestartuj HA.
+
+To samo da się zrobić lokalnie przez sensor **Datapointy** i przycisk **Odśwież stan** w HA.
+Aplikacja i HA nie mogą być wtedy połączone z zamkiem jednocześnie.
 
 Możesz też przetestować DP bezpośrednio z HA usługą `tuya_local_ble.set_datapoint`:
 
@@ -126,7 +129,7 @@ Możesz też przetestować DP bezpośrednio z HA usługą `tuya_local_ble.set_da
 action: tuya_local_ble.set_datapoint
 data:
   device_id: <id urządzenia z HA>
-  dp_id: 11
+  dp_id: 78
   type: bool
   value: "true"
 ```

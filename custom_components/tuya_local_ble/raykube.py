@@ -19,16 +19,20 @@ RAYKUBE_PRODUCT_IDS = ("hc7n0urm", "rlyxv7pe")
 RAYKUBE_SLEEPY_PRODUCT_IDS = ("hc7n0urm",)
 
 DEFAULT_DPS: dict[str, int | None] = {
-    "beep_volume": 31,  # enum: mute / low / normal / high
+    "beep_volume": 31,  # enum, levels per product below
     "automatic_lock": 33,  # bool
-    "auto_lock_time": 36,  # value, seconds
+    "auto_lock_time": 36,  # value, seconds (1..1800)
     "special_function": 68,  # enum: function1 = recalibrate
-    # Unverified: DP11 is the only unexplained bool in the hc7n0urm status
-    # snapshot. Override it once the arming DP is confirmed on the device.
-    "arming": 11,
+    # The hc7n0urm cloud model declares no arming DP, so the arming switch is
+    # only created once its DP is set in devices.json ("raykube.dps.arming").
+    "arming": None,
 }
 
 DEFAULT_BEEP_VOLUME_OPTIONS = ["mute", "low", "normal", "high"]
+# Volume levels declared in the Tuya cloud model of each product.
+PRODUCT_BEEP_VOLUME_OPTIONS = {
+    "hc7n0urm": ["mute", "normal"],
+}
 
 # DPs that must never be shown in Home Assistant (unlock check codes, keys,
 # credential management payloads).
@@ -65,7 +69,9 @@ def get_raykube_config(device: TuyaBLEDevice) -> RaykubeConfig | None:
         dps[feature] = int(dp_id) if dp_id else None
 
     volume_options = list(
-        options.get("beep_volume_options") or DEFAULT_BEEP_VOLUME_OPTIONS
+        options.get("beep_volume_options")
+        or PRODUCT_BEEP_VOLUME_OPTIONS.get(device.product_id)
+        or DEFAULT_BEEP_VOLUME_OPTIONS
     )
     unmute_level = options.get("unmute_level", "normal")
     if unmute_level not in volume_options or unmute_level == volume_options[0]:
