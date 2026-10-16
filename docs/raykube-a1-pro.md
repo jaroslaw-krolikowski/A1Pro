@@ -13,7 +13,6 @@ Ten fork [ShonP40/Tuya-BLE](https://github.com/ShonP40/Tuya-BLE) dodaje do zamk�
 | switch: Automatyczne zamykanie / Auto Lock | auto-zamykanie po otwarciu | 33 | bool | DP z chmury Tuya i snapshotu BLE |
 | number: Czas automatycznego zamknięcia / Auto lock delay | opóźnienie auto-zamknięcia (s) | 36 | value | DP z chmury Tuya i snapshotu BLE |
 | button: Kalibracja / Calibrate | kalibracja zamka | 68 = `function1` | enum | potwierdzone: kalibracja w aplikacji raportuje DP68 = `function1` (`hc7n0urm`) |
-| switch: Tryb uzbrojenia / Arming mode | tryb uzbrojenia (alarm przy ręcznym przekręceniu) | **do ustalenia** | bool | tworzony dopiero po wpisaniu DP, sprawdź niżej |
 | button: Odśwież stan / Refresh status | łączy się z zamkiem i pobiera pełny stan | – | – | – |
 | sensor: Datapointy / Datapoints | wszystkie DP odebrane z zamka (atrybuty) | – | – | diagnostyka |
 
@@ -51,9 +50,6 @@ Ten fork wysyła ją jako `enum`.
     "product_name": "Smart lock",
     "ble_unlock_check": "<base64 z Tuya Cloud>",
     "raykube": {
-      "dps": {
-        "arming": 78
-      },
       "beep_volume_options": ["mute", "normal"],
       "unmute_level": "normal"
     }
@@ -69,13 +65,12 @@ Blok `raykube` jest opcjonalny. Wszystkie klucze:
 | `dps.automatic_lock` | 33 | DP przełącznika auto-zamykania |
 | `dps.auto_lock_time` | 36 | DP czasu auto-zamykania |
 | `dps.special_function` | 68 | DP kalibracji |
-| `dps.arming` | brak | DP trybu uzbrojenia (bez niego przełącznik nie powstaje) |
 | `beep_volume_options` | `hc7n0urm`: `["mute","normal"]`, inne: `["mute","low","normal","high"]` | poziomy głośności w kolejności z chmury Tuya |
 | `unmute_level` | `normal` | poziom po odciszeniu, gdy nie znamy poprzedniego |
 | `calibrate_value` | 0 | indeks wartości DP68 wysyłany przy kalibracji (`function1` = 0) |
 | `auto_lock_time_min` / `auto_lock_time_max` | 1 / 1800 | zakres pola czasu (s) |
 
-`null` albo `0` przy DP wyłącza daną encję, np. `"dps": {"arming": null}`.
+`null` albo `0` przy DP wyłącza daną encję, np. `"dps": {"special_function": null}`.
 
 ### Skąd wziąć dane
 
@@ -94,8 +89,7 @@ export TUYA_ACCESS_ID=...  TUYA_ACCESS_SECRET=...  TUYA_REGION=eu
 python3 tools/tuya_export.py
 ```
 
-Skrypt wypisze listę DP zamka (numer, kod, typ, zakres, aktualna wartość). Wskaże też kandydata na tryb
-uzbrojenia, jeśli model zawiera taki DP. Plik `tuya_export/devices.json` skopiuj do
+Skrypt wypisze listę DP zamka (numer, kod, typ, zakres, aktualna wartość). Plik `tuya_export/devices.json` skopiuj do
 `config/tuya_local_ble/devices.json`. Pliki w `tuya_export/` zawierają klucze, dlatego są w `.gitignore`.
 
 Ręcznie, bez skryptu:
@@ -108,32 +102,54 @@ Ręcznie, bez skryptu:
   kod `ble_unlock_check`. Bez niego zamykanie działa, ale otwieranie nie.
 - MAC bywa zapisany w aplikacji „od tyłu”. Jeśli zamek nie jest wykrywany, odwróć kolejność bajtów.
 
-## Weryfikacja DP trybu uzbrojenia
+## Tryb uzbrojenia (alarm w Home Assistant)
 
-Model DP `hc7n0urm` w chmurze Tuya nie ma DP o nazwie kojarzącej się z uzbrojeniem (ani DP11).
-Kandydaci z modelu to `special_control` (DP78, bool) i opcje `special_function` (DP68, enum).
-Najpierw sprawdź historię zmian DP z ostatnich dni (chmura Tuya przechowuje ją ok. 7 dni):
+Zamek nie ma własnego trybu uzbrojenia ani komendy „zapiszcz” (sprawdzone na pełnym modelu DP `hc7n0urm`),
+więc tryb uzbrojenia działa w Home Assistant. Zamek jest w nim czujnikiem, a dźwięk dają inne urządzenia.
+
+Gdy tryb jest włączony, a zamek zmieni stan z *zamknięty* na *otwarty* nie z polecenia HA (ktoś przekręcił
+gałkę, użył klucza albo otworzył z aplikacji Tuya), automatyzacja:
+- opcjonalnie od razu wysyła do zamka komendę zamknięcia,
+- powtarza wybrane akcje dźwiękowe co zadany interwał (syrena, komunikat TTS na głośniku,
+  powiadomienie z dźwiękiem alarmu na telefon),
+- kończy, gdy wyłączysz tryb uzbrojenia albo minie maksymalny czas alarmu, i wykonuje akcje końcowe
+  (np. wyłączenie syreny).
+
+Otwarcie z HA (panel, automatyzacja, asystent głosowy) nie uruchamia alarmu. HA rozpoznaje to po
+kontekście zmiany stanu: zmiana zgłoszona przez sam zamek nie ma przypisanego użytkownika ani automatyzacji.
+
+### Konfiguracja
+
+1. Utwórz pomocnika: *Ustawienia → Urządzenia i usługi → Pomocnicy → Utwórz pomocnika → Przełącznik*,
+   np. „Zamek uzbrojony” (`input_boolean.zamek_uzbrojony`).
+2. Zaimportuj blueprint: *Ustawienia → Automatyzacje i sceny → Blueprinty → Importuj blueprint* i wklej
+   `https://github.com/jaroslaw-krolikowski/A1Pro/blob/master/blueprints/automation/a1pro/lock_arming_alarm.yaml`.
+   Możesz też skopiować plik do `config/blueprints/automation/a1pro/`.
+3. Utwórz z niego automatyzację. Wybierz zamek i pomocnika, a w *Akcjach alarmu* dodaj dźwięk, np.:
+   ```yaml
+   - action: tts.speak
+     target: {entity_id: tts.google_translate_pl_pl}
+     data:
+       media_player_entity_id: media_player.glosnik_salon
+       message: "Uwaga! Zamek został otwarty ręcznie."
+   ```
+   albo `siren.turn_on` dla syreny, albo powiadomienie z aplikacji mobilnej HA z dźwiękiem alarmu.
+4. W opcjach integracji Tuya Local BLE włącz **Keep connected (24/7)**. Bez stałego połączenia HA
+   dowiaduje się o ręcznym otwarciu dopiero przy kolejnym odświeżeniu, nawet po ok. 5 minutach.
+   Stałe połączenie zużywa więcej baterii zamka. Najlepiej działa przez ESPHome BLE proxy blisko drzwi.
+
+## Historia zmian DP
 
 ```bash
 python3 tools/tuya_export.py --logs 7
 ```
 
-Na końcu wyniku skrypt wypisze ustawienia (`rw`), które zmieniały wartość. Jeśli w tym czasie
-przełączałeś tryb uzbrojenia w aplikacji, będzie tam jego DP. Historia obejmuje tylko DP zadeklarowane
-w modelu Tuya. Ten sposób zaczerpnąłem z `Cloud.getdevicelog` w [TinyTuya](https://github.com/jasonacox/tinytuya).
+Wypisuje historię raportów DP z chmury Tuya (przechowywaną ok. 7 dni), a na końcu ustawienia (`rw`),
+które zmieniały wartość. Historia obejmuje tylko DP zadeklarowane w modelu Tuya. Sposób zaczerpnięty
+z `Cloud.getdevicelog` w [TinyTuya](https://github.com/jasonacox/tinytuya). Lokalnie to samo widać
+w sensorze **Datapointy** po naciśnięciu **Odśwież stan**.
 
-Jeśli historia nic nie pokazuje:
-
-1. Uruchom `python3 tools/tuya_export.py` i zapisz tabelę DP (kolumna „wartość”).
-2. W aplikacji Tuya/Smart Life przełącz **tryb uzbrojenia**. Zmieniaj tylko to jedno ustawienie.
-   Poczekaj, aż aplikacja połączy się z zamkiem.
-3. Uruchom skrypt ponownie i porównaj wartości. DP, który się zmienił, to tryb uzbrojenia.
-4. Jeśli to DP typu bool, wpisz go w `"raykube": {"dps": {"arming": <nr>}}` i zrestartuj HA.
-
-To samo da się zrobić lokalnie przez sensor **Datapointy** i przycisk **Odśwież stan** w HA.
-Aplikacja i HA nie mogą być wtedy połączone z zamkiem jednocześnie.
-
-Możesz też przetestować DP bezpośrednio z HA usługą `tuya_local_ble.set_datapoint`:
+Dowolny DP można zapisać z HA usługą `tuya_local_ble.set_datapoint`:
 
 ```yaml
 action: tuya_local_ble.set_datapoint
@@ -150,7 +166,7 @@ Tą samą usługą dostępne są pozostałe funkcje DP68: `type: enum`, `value: 
 ## Przykładowe automatyzacje
 
 ```yaml
-# Uzbrojenie po wyjściu wszystkich z domu
+# Zamknięcie i uzbrojenie po wyjściu wszystkich z domu
 - alias: Zamek - uzbrój po wyjściu
   triggers:
     - trigger: state
@@ -159,8 +175,18 @@ Tą samą usługą dostępne są pozostałe funkcje DP68: `type: enum`, `value: 
   actions:
     - action: lock.lock
       target: {entity_id: lock.twoj_zamek}
-    - action: switch.turn_on
-      target: {entity_id: switch.twoj_zamek_tryb_uzbrojenia}
+    - action: input_boolean.turn_on
+      target: {entity_id: input_boolean.zamek_uzbrojony}
+
+# Rozbrojenie po powrocie
+- alias: Zamek - rozbrój po powrocie
+  triggers:
+    - trigger: numeric_state
+      entity_id: zone.home
+      above: 0
+  actions:
+    - action: input_boolean.turn_off
+      target: {entity_id: input_boolean.zamek_uzbrojony}
 
 # Cisza nocna
 - alias: Zamek - wycisz na noc

@@ -28,8 +28,6 @@ MODEL = {
             "properties": [
                 {"abilityId": 9, "code": "battery_state", "accessMode": "ro",
                  "typeSpec": {"type": "enum", "range": ["high", "medium", "low", "poweroff"]}},
-                {"abilityId": 11, "code": "arming_switch", "accessMode": "rw",
-                 "typeSpec": {"type": "bool"}},
                 {"abilityId": 21, "code": "alarm_lock", "accessMode": "ro",
                  "typeSpec": {"type": "enum", "range": ["low_battery", "defense"]}},
                 {"abilityId": 31, "code": "beep_volume", "name": "提示音量", "accessMode": "rw",
@@ -153,7 +151,6 @@ def test_export_builds_devices_json(tmp_path, monkeypatch, capsys):
     assert entry["ble_unlock_check"] == "AAH//zEyMzQ1Njc4AaqrzN0AAA=="
     assert entry["raykube"] == {
         "dps": {
-            "arming": 11,
             "beep_volume": 31,
             "automatic_lock": 33,
             "auto_lock_time": 36,
@@ -167,11 +164,6 @@ def test_export_builds_devices_json(tmp_path, monkeypatch, capsys):
     raw = json.loads((tmp_path / f"{DEVICE_ID}.json").read_text(encoding="utf-8"))
     assert "提示音量" in raw["model"]["model"]
     assert [log["value"] for log in raw["logs"]][:3] == ["normal", "false", "true"]
-
-
-def test_alarm_is_not_an_arming_candidate():
-    assert not tuya_export.ARMING_CODE.search("alarm_lock")
-    assert tuya_export.ARMING_CODE.search("arming_switch")
 
 
 def test_script_runs_standalone():

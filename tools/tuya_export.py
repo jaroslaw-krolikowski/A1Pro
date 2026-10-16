@@ -57,7 +57,6 @@ FEATURE_CODES = {
     "auto_lock_time": "auto_lock_time",
     "special_function": "special_function",
 }
-ARMING_CODE = re.compile(r"(^|_)(arm|arming|defen[cs]e|guard)(_|$)")
 
 # DP codes whose values are secrets (unlock check codes, keys).
 SENSITIVE_CODES = (
@@ -292,10 +291,9 @@ def current_values(raw: dict) -> dict[str, object]:
     return values
 
 
-def raykube_block(properties: list[dict]) -> tuple[dict, list[dict]]:
+def raykube_block(properties: list[dict]) -> dict:
     """Build the devices.json "raykube" block from the DP model."""
     block: dict[str, object] = {"dps": {}}
-    arming_candidates: list[dict] = []
     for prop in properties:
         code = prop["code"] or ""
         spec = prop["type_spec"]
@@ -310,11 +308,7 @@ def raykube_block(properties: list[dict]) -> tuple[dict, list[dict]]:
                 block["auto_lock_time_max"] = int(spec["max"])
         if code == "special_function" and "function1" in (spec.get("range") or []):
             block["calibrate_value"] = spec["range"].index("function1")
-        if ARMING_CODE.search(code):
-            arming_candidates.append(prop)
-    if len(arming_candidates) == 1:
-        block["dps"]["arming"] = arming_candidates[0]["dp_id"]
-    return block, arming_candidates
+    return block
 
 
 def describe_spec(spec: dict) -> str:
@@ -419,7 +413,7 @@ def main() -> int:
         }
         if ble_unlock_check:
             entry["ble_unlock_check"] = ble_unlock_check
-        block, arming_candidates = raykube_block(properties)
+        block = raykube_block(properties)
         if details.get("category") == "jtmspro":
             entry["raykube"] = block
         devices_json[mac or device_id] = entry
@@ -444,16 +438,6 @@ def main() -> int:
 
         if raw.get("logs") is not None:
             print_logs(raw["logs"], properties, args.show_secrets)
-
-        if arming_candidates:
-            names = ", ".join(f"DP{p['dp_id']} {p['code']}" for p in arming_candidates)
-            print(f"\nTryb uzbrojenia — kandydaci z modelu: {names}")
-            if len(arming_candidates) > 1:
-                print("Kilka kandydatów: wpisz właściwy w raykube.dps.arming.")
-        elif details.get("category") == "jtmspro":
-            print("\nModel nie zawiera DP trybu uzbrojenia o znanej nazwie. Przełącznik trybu "
-                  "uzbrojenia pojawi się w HA dopiero po wpisaniu raykube.dps.arming "
-                  "(sprawdź według docs/raykube-a1-pro.md).")
 
     (out_dir / "devices.json").write_text(
         json.dumps(devices_json, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"

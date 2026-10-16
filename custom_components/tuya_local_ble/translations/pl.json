@@ -73,9 +73,6 @@
       },
       "mute": {
         "name": "Wyciszenie"
-      },
-      "arming": {
-        "name": "Tryb uzbrojenia"
       }
     },
     "lock": {

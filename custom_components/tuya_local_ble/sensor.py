@@ -574,7 +574,7 @@ class TuyaBLESensor(TuyaBLEEntity, SensorEntity):
 class TuyaBLERaykubeDatapointsSensor(TuyaBLEEntity, SensorEntity):
     """Diagnostic: every datapoint received from the lock, as attributes.
 
-    Used to confirm DP numbers (e.g. arming) by changing a setting in the
+    Used to confirm DP numbers by changing a setting in the
     Tuya app and comparing the snapshot after "Refresh status".
     """
 

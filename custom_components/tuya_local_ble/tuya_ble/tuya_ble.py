@@ -1875,7 +1875,7 @@ class TuyaBLEDevice:
                     TuyaBLECode.FUN_SENDER_DPS_V4, raykube_lock_v4_data, True
                 )
             else:
-                # Settings (volume, auto-lock, calibration, arming, ...) use
+                # Settings (volume, auto-lock, calibration, ...) use
                 # the typed V4 write the official app sends:
                 #   00000000 01 <dp_id> <type> <len:2> <value>
                 for dp_id in datapoint_ids:

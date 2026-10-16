@@ -1,0 +1,125 @@
+blueprint:
+  name: Zamek - tryb uzbrojenia (alarm przy ręcznym otwarciu)
+  description: >-
+    Gdy tryb uzbrojenia jest włączony, a zamek zostanie otwarty ręcznie
+    (gałką, kluczem lub z aplikacji Tuya, czyli nie przez Home Assistant),
+    uruchamia alarm: powtarza wybrane akcje dźwiękowe (syrena, komunikat na
+    głośniku, powiadomienie) co zadany interwał, aż tryb uzbrojenia zostanie
+    wyłączony albo minie maksymalny czas alarmu. Opcjonalnie od razu zamyka
+    zamek z powrotem.
+
+
+    Otwarcie przez Home Assistant (z panelu, automatyzacji, asystenta
+    głosowego) nie uruchamia alarmu.
+
+
+    Szybkie wykrycie wymaga stałego połączenia BLE z zamkiem: opcja
+    "Keep connected (24/7)" integracji Tuya Local BLE (najlepiej przez
+    ESPHome BLE proxy).
+  domain: automation
+  source_url: https://github.com/jaroslaw-krolikowski/A1Pro/blob/master/blueprints/automation/a1pro/lock_arming_alarm.yaml
+  input:
+    lock_entity:
+      name: Zamek
+      selector:
+        entity:
+          filter:
+            - domain: lock
+    arming_entity:
+      name: Tryb uzbrojenia
+      description: >-
+        Pomocnik typu przełącznik (Ustawienia → Urządzenia i usługi →
+        Pomocnicy → Przełącznik), np. input_boolean.zamek_uzbrojony.
+      selector:
+        entity:
+          filter:
+            - domain: input_boolean
+    alarm_actions:
+      name: Akcje alarmu (dźwięk)
+      description: >-
+        Wykonywane od razu i potem co interwał, dopóki alarm trwa, np.
+        siren.turn_on, tts.speak na głośniku, notify z dźwiękiem alarmu.
+      default: []
+      selector:
+        action: {}
+    stop_actions:
+      name: Akcje po zakończeniu alarmu
+      description: Np. siren.turn_off albo media_player.media_stop.
+      default: []
+      selector:
+        action: {}
+    repeat_interval:
+      name: Interwał powtarzania
+      default: 10
+      selector:
+        number:
+          min: 2
+          max: 300
+          unit_of_measurement: s
+          mode: box
+    max_duration:
+      name: Maksymalny czas alarmu
+      default: 10
+      selector:
+        number:
+          min: 1
+          max: 120
+          unit_of_measurement: min
+          mode: box
+    relock:
+      name: Zamknij zamek ponownie
+      description: Po wykryciu ręcznego otwarcia od razu wyślij do zamka komendę zamknięcia.
+      default: false
+      selector:
+        boolean: {}
+
+mode: single
+max_exceeded: silent
+
+triggers:
+  - trigger: state
+    entity_id: !input lock_entity
+    from: locked
+    to: unlocked
+
+conditions:
+  - condition: state
+    entity_id: !input arming_entity
+    state: "on"
+  # A state change requested through Home Assistant carries the caller's
+  # user_id (UI, voice assistant) or parent_id (automation, script). A
+  # change reported by the lock itself carries neither.
+  - condition: template
+    value_template: >-
+      {{ trigger.to_state.context.user_id is none
+         and trigger.to_state.context.parent_id is none }}
+
+variables:
+  lock_entity: !input lock_entity
+  arming_entity: !input arming_entity
+  relock: !input relock
+  repeat_interval: !input repeat_interval
+  max_duration: !input max_duration
+
+actions:
+  - if:
+      - condition: template
+        value_template: "{{ relock }}"
+    then:
+      - action: lock.lock
+        target:
+          entity_id: "{{ lock_entity }}"
+        continue_on_error: true
+  - repeat:
+      while:
+        - condition: template
+          value_template: >-
+            {{ is_state(arming_entity, 'on')
+               and (repeat.index - 1) * repeat_interval < max_duration * 60 }}
+      sequence:
+        - sequence: !input alarm_actions
+        - wait_template: "{{ is_state(arming_entity, 'off') }}"
+          timeout:
+            seconds: "{{ repeat_interval }}"
+          continue_on_timeout: true
+  - sequence: !input stop_actions
