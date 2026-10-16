@@ -126,6 +126,10 @@ Standardowego okna zamka w HA (z dużym przełącznikiem) integracja zmienić ni
 
 - **Stuknięcie** w kafelek **przełącza** zamek: otwiera zamknięty, zamyka otwarty. Przycisk po prawej
   pokazuje, co zrobi stuknięcie. Do czasu potwierdzenia przez zamek kręci się wskaźnik.
+  Reaguje cały kafelek, nie tylko przycisk. Gdy stan jest nieznany (np. tuż po restarcie HA),
+  stuknięcie zawsze **zamyka**, nigdy nie otwiera. Żeby przypadkowe dotknięcie (np. w kieszeni,
+  poza domem) nie otworzyło drzwi, ustaw `confirm_unlock: true`. Wtedy otwarcie wymaga drugiego
+  stuknięcia w ciągu kilku sekund, a zamykanie działa nadal od razu.
 - **Przytrzymanie** (albo strzałka po prawej) otwiera panel ze szczegółami:
   - przyciski **Zamknij** i **Otwórz**. Wyróżniony jest ten, który zmienia aktualny stan;
   - stan i czas ostatniej zmiany z informacją, skąd przyszła: *na zamku* (gałka, klucz, aplikacja,
@@ -151,6 +155,9 @@ Karta dopasowuje się do jasnego i ciemnego motywu HA.
 Pozostałe encje zamka (bateria, auto-zamykanie, wyciszenie, przyciski) karta znajduje sama. Każdą można też
 wskazać ręcznie: `battery_entity`, `auto_lock_entity`, `auto_lock_time_entity`, `mute_entity`,
 `refresh_entity`, `calibrate_entity`, `signal_entity`.
+
+Ustawienia, których zamek jeszcze nie przesłał, karta pokazuje jako *Nieznany* (przerywany przełącznik,
+puste pole czasu). Przycisk **Odśwież** pobiera je z zamka.
 
 Po aktualizacji integracji odśwież stronę albo aplikację HA, żeby wczytać nową wersję karty.
 
@@ -311,6 +318,9 @@ Identyfikatory encji (`lock.twoj_zamek` itd.) podmień na swoje z ustawień urz�
 
 ## Ograniczenia
 
+- Po restarcie HA stan zamka i ustawień jest nieznany, dopóki zamek się nie odezwie. Dlatego ok. 20 s
+  po starcie integracja sama łączy się z zamkiem i pobiera stan. Jeśli zamek jest poza zasięgiem,
+  ponawia to co 2 minuty, maksymalnie 3 razy.
 - Zamek na baterie śpi między komendami. HA łączy się na żądanie, więc każda zmiana trwa kilka sekund.
   Stan ustawień odświeża się przy każdym połączeniu (snapshot), przyciskiem **Odśwież stan**
   albo na stałe przy opcji *Stałe połączenie (24/7)* w opcjach integracji (wtedy lepiej użyć ESPHome BLE proxy).

@@ -19,7 +19,7 @@
  * Look follows shadcn/ui; icons are Lucide (https://lucide.dev, ISC license).
  */
 
-const CARD_VERSION = "1.1.0";
+const CARD_VERSION = "1.2.0";
 const HOLD_MS = 500;
 const CONFIRM_MS = 4000;
 const PENDING_TIMEOUT_MS = 20000;
@@ -66,6 +66,8 @@ const STRINGS = {
     source_device: "na zamku",
     on: "Wł.",
     off: "Wył.",
+    unknown_value: "Nieznany",
+    settings_unknown: "Zamek nie przesłał jeszcze ustawień. Naciśnij Odśwież.",
     close: "Zamknij panel",
     more: "Szczegóły",
     just_now: "przed chwilą",
@@ -112,6 +114,8 @@ const STRINGS = {
     source_device: "at the lock",
     on: "On",
     off: "Off",
+    unknown_value: "Unknown",
+    settings_unknown: "The lock has not reported its settings yet. Press Refresh.",
     close: "Close panel",
     more: "Details",
     just_now: "just now",
@@ -242,6 +246,15 @@ function lockVisual(state) {
     default:
       return { icon: "circle-help", tone: "unknown" };
   }
+}
+
+/** "on" / "off" state of a switch-like entity, or null when the lock has not reported it. */
+function onOff(entity) {
+  return entity && (entity.state === "on" || entity.state === "off") ? entity.state : null;
+}
+
+function isNumber(entity) {
+  return Boolean(entity) && entity.state !== "" && !Number.isNaN(Number(entity.state));
 }
 
 /** What a tap on the tile does in this state. */
@@ -727,7 +740,10 @@ class RaykubeLockPanel extends HTMLElement {
         }
         .switch[aria-checked=true] { background: var(--rk-foreground); }
         .switch[aria-checked=true]::after { transform: translateX(16px); }
+        .switch[aria-checked=mixed] { border: 2px dashed var(--rk-border); background: transparent; }
+        .switch[aria-checked=mixed]::after { transform: translateX(8px); background: var(--rk-muted-foreground); opacity: .4; box-shadow: none; }
         .switch:focus-visible { outline: 2px solid var(--rk-ring); outline-offset: 2px; }
+        .row.hint { font-size: 13px; color: var(--rk-muted-foreground); padding-top: 10px; padding-bottom: 10px; }
         .event { display: flex; align-items: center; gap: 12px; padding: 10px 14px; }
         .event + .event { border-top: 1px solid var(--rk-border); }
         .event .tint { width: 30px; height: 30px; border-radius: 8px; }
@@ -880,8 +896,9 @@ class RaykubeLockPanel extends HTMLElement {
     const autoLock = r.auto_lock && hass.states[r.auto_lock];
     const autoTime = r.auto_lock_time && hass.states[r.auto_lock_time];
     if (autoLock) {
+      const on = onOff(autoLock);
       stats.push([t.stat_auto_lock, "timer",
-        autoLock.state === "on" ? (autoTime ? `${autoTime.state} ${t.seconds}` : t.on) : t.off]);
+        on === "on" ? (isNumber(autoTime) ? `${autoTime.state} ${t.seconds}` : t.on) : on === "off" ? t.off : t.unknown_value]);
     }
     const arming = r.arming && hass.states[r.arming];
     if (arming) {
@@ -897,11 +914,14 @@ class RaykubeLockPanel extends HTMLElement {
 
     // Settings
     const rows = [];
+    let unknown = false;
     const toggle = (act, ic, label, entity) => {
       if (!entity) return;
-      const on = entity.state === "on";
+      const on = onOff(entity);
+      if (!on) unknown = true;
+      const checked = on === "on" ? "true" : on === "off" ? "false" : "mixed";
       rows.push(`<div class="row">${icon(ic, 18)}<span class="label">${esc(label)}</span>
-        <button class="switch" role="switch" aria-checked="${on}" aria-label="${esc(label)}" data-act="${act}"></button></div>`);
+        <button class="switch" role="switch" aria-checked="${checked}" aria-label="${esc(label)}" data-act="${act}"></button></div>`);
     };
     toggle("arming", "shield", t.arming, arming);
     toggle("auto_lock", "timer", t.auto_lock, autoLock);
@@ -909,10 +929,11 @@ class RaykubeLockPanel extends HTMLElement {
     if (autoTime) {
       const a = autoTime.attributes || {};
       const existing = root.querySelector('[data-act="auto_lock_time"]');
-      const value = focused && existing ? existing.value : autoTime.state;
+      if (!isNumber(autoTime)) unknown = true;
+      const value = focused && existing ? existing.value : isNumber(autoTime) ? autoTime.state : "";
       rows.push(`<div class="row">${icon("timer", 18)}<span class="label">${esc(t.auto_lock_after)}</span>
         <input class="input" type="number" inputmode="numeric" data-act="auto_lock_time"
-          min="${esc(a.min ?? 1)}" max="${esc(a.max ?? 1800)}" step="${esc(a.step ?? 1)}" value="${esc(value)}">
+          min="${esc(a.min ?? 1)}" max="${esc(a.max ?? 1800)}" step="${esc(a.step ?? 1)}" value="${esc(value)}" placeholder="—">
         <span class="unit">${esc(t.seconds)}</span></div>`);
     }
     toggle("mute", "volume-x", t.mute, r.mute && hass.states[r.mute]);
@@ -925,6 +946,7 @@ class RaykubeLockPanel extends HTMLElement {
       rows.push(`<div class="row">${icon("crosshair", 18)}<span class="label">${esc(t.calibrate)}</span>
         <button class="btn btn-sm ${armed ? "btn-destructive" : "btn-outline"}" data-act="calibrate">${esc(armed ? t.confirm_calibrate : t.calibrate_action)}</button></div>`);
     }
+    if (unknown && r.refresh) rows.push(`<div class="row hint">${icon("circle-help", 18)}<span>${esc(t.settings_unknown)}</span></div>`);
     const settings = root.querySelector(".settings");
     const html = rows.join("");
     if (settings._html !== html && !focused) {

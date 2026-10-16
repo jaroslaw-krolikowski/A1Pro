@@ -143,3 +143,57 @@ def test_quick_commands_refresh_once_after_the_last_one():
         await hass.async_stop(force=True)
 
     asyncio.run(scenario())
+
+
+def startup_delays(delay: float, retry: float):
+    return patch.multiple(
+        lock_platform,
+        RAYKUBE_STARTUP_REFRESH_DELAY=delay,
+        RAYKUBE_STARTUP_REFRESH_RETRY=retry,
+    )
+
+
+def test_state_is_read_from_the_lock_after_restart():
+    async def scenario():
+        hass = HomeAssistant("/tmp")
+        frame.async_setup(hass)
+        await hass.async_start()
+        with startup_delays(0.1, 0.1):
+            device, entity, physical, sent = await make_lock(hass)
+            await entity.async_added_to_hass()
+            assert entity.is_locked is None  # unknown until the lock answers
+            await asyncio.sleep(0.5)
+            assert sent.count("status") == 1  # no retries once the state is known
+            assert state(entity) == LockState.LOCKED
+            await entity.async_will_remove_from_hass()
+        await hass.async_stop(force=True)
+
+    asyncio.run(scenario())
+
+
+def test_startup_read_is_retried_while_the_lock_is_out_of_reach():
+    async def scenario():
+        hass = HomeAssistant("/tmp")
+        frame.async_setup(hass)
+        await hass.async_start()
+        with startup_delays(0.1, 0.1):
+            device, entity, physical, sent = await make_lock(hass)
+            answer = device.update
+            attempts = []
+
+            async def out_of_reach():
+                attempts.append(1)
+                if len(attempts) < 3:
+                    raise TimeoutError
+                await answer()
+
+            device.update = out_of_reach
+            physical["unlocked"] = True
+            await entity.async_added_to_hass()
+            await asyncio.sleep(1.0)
+            assert len(attempts) == 3
+            assert state(entity) == LockState.UNLOCKED
+            await entity.async_will_remove_from_hass()
+        await hass.async_stop(force=True)
+
+    asyncio.run(scenario())

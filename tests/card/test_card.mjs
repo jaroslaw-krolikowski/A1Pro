@@ -149,6 +149,32 @@ if (shots) await page.locator("#host").screenshot({ path: path.join(shots, "6-ti
 await tapTile();
 assert.deepEqual(await calls(), [["lock", "unlock", { entity_id: LOCK }]]);
 
+// After an HA restart nothing is known yet: tap locks (never unlocks), the
+// panel says "unknown" instead of pretending the settings are off.
+await setLock("unlocked"); // settles the unlock sent above
+await page.evaluate((id) => {
+  const hass = window.makeHass();
+  for (const e of [id, "switch.auto", "number.czas", "switch.mute"]) {
+    hass.states[e] = { ...hass.states[e], state: "unknown" };
+  }
+  window.card.hass = hass;
+}, LOCK);
+assert.equal(await page.locator("raykube-lock-card .meta .state").textContent(), "Stan nieznany");
+assert.equal((await action.textContent()).trim(), "Zamknij");
+await tapTile();
+assert.deepEqual(await calls(), [["lock", "lock", { entity_id: LOCK }]]);
+await page.locator("raykube-lock-card .more").click();
+const unknownPanel = page.locator("raykube-lock-panel");
+await unknownPanel.locator(".stats").waitFor();
+assert.match((await unknownPanel.locator(".stat").allTextContents()).join("|"), /Zamykanie\s*Nieznany/);
+assert.equal(await unknownPanel.locator('[data-act="auto_lock"]').getAttribute("aria-checked"), "mixed");
+assert.equal(await unknownPanel.locator('[data-act="mute"]').getAttribute("aria-checked"), "mixed");
+assert.equal(await unknownPanel.locator('[data-act="auto_lock_time"]').inputValue(), "");
+assert.match(await unknownPanel.locator(".row.hint").textContent(), /Naciśnij Odśwież/);
+await page.waitForTimeout(300);
+if (shots) await page.screenshot({ path: path.join(shots, "7-panel-unknown.png") });
+await unknownPanel.locator('[data-act="close"]').click();
+
 // Bad config is rejected
 const err = await page.evaluate(() => {
   try { document.createElement("raykube-lock-card").setConfig({ entity: "switch.x" }); return null; }
