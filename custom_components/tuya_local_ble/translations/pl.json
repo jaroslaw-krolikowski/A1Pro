@@ -17,6 +17,20 @@
       }
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Opcje Tuya BLE",
+        "description": "Sposób łączenia z urządzeniem. Stałe połączenie przydaje się głównie przy zamkach na baterie (np. Raykube): HA od razu widzi otwarcie gałką lub kluczem, czego wymaga tryb uzbrojenia. Domyślnie wyłączone.",
+        "data": {
+          "keep_connected": "Stałe połączenie (24/7)"
+        },
+        "data_description": {
+          "keep_connected": "Włączone: HA utrzymuje stałe połączenie Bluetooth z urządzeniem i od razu dostaje zmiany stanu. Zużywa więcej baterii, a aplikacja Tuya nie połączy się w tym czasie z urządzeniem. Najlepiej działa z ESPHome Bluetooth proxy. Wyłączone: HA łączy się tylko przy komendach i odświeżeniu."
+        }
+      }
+    }
+  },
   "services": {
     "set_datapoint": {
       "name": "Ustaw datapoint",
