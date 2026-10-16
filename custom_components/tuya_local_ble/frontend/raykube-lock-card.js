@@ -1,24 +1,28 @@
 /*
  * Raykube Lock card, shipped with the tuya_local_ble integration.
  *
- * Tile: tap locks the door, long press (or the chevron) opens a panel with
- * lock/unlock (unlock needs a second tap to confirm), battery, last change
- * and its source, settings, calibration and recent history.
+ * Tile: tap toggles the lock (unlocks when locked, locks otherwise), long
+ * press or the chevron opens a panel with lock/unlock, battery, the time and
+ * source of the last change, settings, calibration and recent history.
  *
  *   type: custom:raykube-lock-card
  *   entity: lock.raykube_a1_ultra_d9f494_zamek
- *   name: Drzwi wejściowe        # optional
+ *   name: Drzwi wejściowe                          # optional
  *   arming_entity: input_boolean.zamek_uzbrojony   # optional
+ *   confirm_unlock: false                          # optional, second tap to unlock
  *
  * Related entities of the same device are found by translation key; any of
  * them can be overridden with battery_entity, auto_lock_entity,
  * auto_lock_time_entity, mute_entity, refresh_entity, calibrate_entity,
  * signal_entity.
+ *
+ * Look follows shadcn/ui; icons are Lucide (https://lucide.dev, ISC license).
  */
 
-const CARD_VERSION = "1.0.0";
+const CARD_VERSION = "1.1.0";
 const HOLD_MS = 500;
 const CONFIRM_MS = 4000;
+const PENDING_TIMEOUT_MS = 20000;
 
 const STRINGS = {
   pl: {
@@ -34,7 +38,7 @@ const STRINGS = {
     lock: "Zamknij",
     unlock: "Otwórz",
     confirm_unlock: "Potwierdź otwarcie",
-    tap_hint: "Dotknij, aby zamknąć · przytrzymaj, aby zobaczyć więcej",
+    tap_hint: "Dotknij, aby zamknąć lub otworzyć · przytrzymaj, aby zobaczyć więcej",
     battery: "Bateria",
     battery_high: "Wysoki",
     battery_normal: "Średni",
@@ -43,6 +47,8 @@ const STRINGS = {
     battery_poweroff: "Wyczerpana",
     signal: "Sygnał",
     auto_lock: "Automatyczne zamykanie",
+    stat_auto_lock: "Zamykanie",
+    stat_arming: "Uzbrojenie",
     auto_lock_after: "Zamknij po",
     seconds: "s",
     mute: "Wyciszenie",
@@ -51,7 +57,6 @@ const STRINGS = {
     refresh_action: "Odśwież",
     calibrate: "Kalibracja",
     calibrate_action: "Uruchom",
-    auto_lock_short: "Auto-zamykanie",
     confirm_calibrate: "Potwierdź",
     settings: "Ustawienia",
     history: "Ostatnie zdarzenia",
@@ -59,12 +64,12 @@ const STRINGS = {
     source_ha: "z Home Assistant",
     source_automation: "automatyzacja",
     source_device: "na zamku",
-    changed: "Zmiana",
     on: "Wł.",
     off: "Wył.",
     close: "Zamknij panel",
-    more: "Więcej",
+    more: "Szczegóły",
     just_now: "przed chwilą",
+    now: "teraz",
   },
   en: {
     locked: "Locked",
@@ -79,7 +84,7 @@ const STRINGS = {
     lock: "Lock",
     unlock: "Unlock",
     confirm_unlock: "Confirm unlock",
-    tap_hint: "Tap to lock · hold for more",
+    tap_hint: "Tap to lock or unlock · hold for more",
     battery: "Battery",
     battery_high: "High",
     battery_normal: "Medium",
@@ -88,6 +93,8 @@ const STRINGS = {
     battery_poweroff: "Empty",
     signal: "Signal",
     auto_lock: "Auto lock",
+    stat_auto_lock: "Auto lock",
+    stat_arming: "Arming",
     auto_lock_after: "Lock after",
     seconds: "s",
     mute: "Mute",
@@ -96,7 +103,6 @@ const STRINGS = {
     refresh_action: "Refresh",
     calibrate: "Calibration",
     calibrate_action: "Start",
-    auto_lock_short: "Auto lock",
     confirm_calibrate: "Confirm",
     settings: "Settings",
     history: "Recent events",
@@ -104,12 +110,12 @@ const STRINGS = {
     source_ha: "from Home Assistant",
     source_automation: "automation",
     source_device: "at the lock",
-    changed: "Changed",
     on: "On",
     off: "Off",
     close: "Close panel",
-    more: "More",
+    more: "Details",
     just_now: "just now",
+    now: "now",
   },
 };
 
@@ -124,17 +130,44 @@ const RELATED_KEYS = {
   signal: "signal_strength",
 };
 
-const ICONS = {
-  lock: "mdi:lock",
-  unlock: "mdi:lock-open-variant",
-  jammed: "mdi:lock-alert",
-  pending: "mdi:lock-clock",
-  unknown: "mdi:lock-question",
-  battery_high: "mdi:battery",
-  battery_normal: "mdi:battery-50",
-  battery_medium: "mdi:battery-50",
-  battery_low: "mdi:battery-alert",
-  battery_poweroff: "mdi:battery-off-outline",
+// Lucide icons (https://lucide.dev), ISC license.
+const LUCIDE = {
+  lock: '<rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+  "lock-open": '<rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/>',
+  loader: '<path d="M21 12a9 9 0 1 1-6.219-8.56"/>',
+  "triangle-alert": '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+  "circle-help": '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>',
+  "chevron-up": '<path d="m18 15-6-6-6 6"/>',
+  x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+  "battery-full": '<rect width="16" height="10" x="2" y="7" rx="2" ry="2"/><line x1="22" x2="22" y1="11" y2="13"/><line x1="6" x2="6" y1="11" y2="13"/><line x1="10" x2="10" y1="11" y2="13"/><line x1="14" x2="14" y1="11" y2="13"/>',
+  "battery-medium": '<rect width="16" height="10" x="2" y="7" rx="2" ry="2"/><line x1="22" x2="22" y1="11" y2="13"/><line x1="6" x2="6" y1="11" y2="13"/><line x1="10" x2="10" y1="11" y2="13"/>',
+  "battery-low": '<rect width="16" height="10" x="2" y="7" rx="2" ry="2"/><line x1="22" x2="22" y1="11" y2="13"/><line x1="6" x2="6" y1="11" y2="13"/>',
+  battery: '<rect width="16" height="10" x="2" y="7" rx="2" ry="2"/><line x1="22" x2="22" y1="11" y2="13"/>',
+  timer: '<line x1="10" x2="14" y1="2" y2="2"/><line x1="12" x2="15" y1="14" y2="11"/><circle cx="12" cy="14" r="8"/>',
+  shield: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>',
+  "shield-check": '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',
+  "volume-x": '<path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z"/><line x1="22" x2="16" y1="9" y2="15"/><line x1="16" x2="22" y1="9" y2="15"/>',
+  "refresh-cw": '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>',
+  crosshair: '<circle cx="12" cy="12" r="10"/><line x1="22" x2="18" y1="12" y2="12"/><line x1="6" x2="2" y1="12" y2="12"/><line x1="12" x2="12" y1="6" y2="2"/><line x1="12" x2="12" y1="22" y2="18"/>',
+  bluetooth: '<path d="m7 7 10 10-5 5V2l5 5L7 17"/>',
+  history: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>',
+  "key-round": '<path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/>',
+  smartphone: '<rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/>',
+  bot: '<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/>',
+};
+
+function icon(name, size = 16, cls = "") {
+  return `<svg class="lucide ${cls}" xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}"
+    viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+    stroke-linejoin="round" aria-hidden="true">${LUCIDE[name] || ""}</svg>`;
+}
+
+const BATTERY_ICONS = {
+  high: "battery-full",
+  normal: "battery-medium",
+  medium: "battery-medium",
+  low: "battery-low",
+  poweroff: "battery",
 };
 
 function esc(value) {
@@ -149,18 +182,13 @@ function strings(hass) {
   return STRINGS[lang] || STRINGS.en;
 }
 
-function relativeTime(hass, iso) {
+function relativeTime(hass, iso, style = "long") {
   if (!iso) return "";
   const seconds = Math.round((Date.parse(iso) - Date.now()) / 1000);
   if (Math.abs(seconds) < 45) return strings(hass).just_now;
   const lang = (hass?.locale?.language || "en").split("-")[0];
-  const units = [
-    ["day", 86400],
-    ["hour", 3600],
-    ["minute", 60],
-  ];
-  const rtf = new Intl.RelativeTimeFormat(lang, { numeric: "auto" });
-  for (const [unit, size] of units) {
+  const rtf = new Intl.RelativeTimeFormat(lang, { numeric: "auto", style });
+  for (const [unit, size] of [["day", 86400], ["hour", 3600], ["minute", 60]]) {
     if (Math.abs(seconds) >= size || unit === "minute") {
       return rtf.format(Math.round(seconds / size), unit);
     }
@@ -168,67 +196,112 @@ function relativeTime(hass, iso) {
   return "";
 }
 
+/** Compact age for the tile: "15 min", "2 godz.", "3 dni". */
+function shortAge(hass, iso) {
+  if (!iso) return "";
+  const seconds = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 1000));
+  if (seconds < 45) return strings(hass).now;
+  const lang = (hass?.locale?.language || "en").split("-")[0];
+  const [unit, size] = seconds >= 86400 ? ["day", 86400] : seconds >= 3600 ? ["hour", 3600] : ["minute", 60];
+  return new Intl.NumberFormat(lang, { style: "unit", unit, unitDisplay: "short" })
+    .format(Math.round(seconds / size));
+}
+
 function clockTime(hass, when) {
   const lang = hass?.locale?.language || "en";
   const date = new Date(when);
-  const today = new Date();
-  const sameDay = date.toDateString() === today.toDateString();
+  const sameDay = date.toDateString() === new Date().toDateString();
   return date.toLocaleString(lang, sameDay
     ? { hour: "2-digit", minute: "2-digit" }
     : { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 
-/** Where a change came from, from a state context or a logbook entry. */
+/** Where a change came from: [label, lucide icon]. */
 function changeSource(t, userId, parentId, eventType, domain) {
   if (eventType === "automation_triggered" || domain === "automation" || domain === "script") {
-    return t.source_automation;
+    return [t.source_automation, "bot"];
   }
-  if (userId) return t.source_ha;
-  if (parentId) return t.source_automation;
-  return t.source_device;
+  if (userId) return [t.source_ha, "smartphone"];
+  if (parentId) return [t.source_automation, "bot"];
+  return [t.source_device, "key-round"];
 }
 
 function lockVisual(state) {
   switch (state) {
     case "locked":
-      return { icon: ICONS.lock, tone: "locked" };
+      return { icon: "lock", tone: "locked" };
     case "unlocked":
     case "open":
-      return { icon: ICONS.unlock, tone: "unlocked" };
+      return { icon: "lock-open", tone: "unlocked" };
     case "locking":
     case "unlocking":
     case "opening":
-      return { icon: ICONS.pending, tone: "pending" };
+      return { icon: "loader", tone: "pending" };
     case "jammed":
-      return { icon: ICONS.jammed, tone: "alert" };
+      return { icon: "triangle-alert", tone: "alert" };
     default:
-      return { icon: ICONS.unknown, tone: "unknown" };
+      return { icon: "circle-help", tone: "unknown" };
   }
 }
 
+/** What a tap on the tile does in this state. */
+function toggleTarget(state) {
+  return state === "locked" ? "unlock" : "lock";
+}
+
+// shadcn/ui-like tokens mapped onto the Home Assistant theme.
 const SHARED_STYLE = `
   :host {
-    --rk-locked: var(--state-lock-locked-color, var(--success-color, #43a047));
-    --rk-unlocked: var(--state-lock-unlocked-color, var(--error-color, #db4437));
-    --rk-pending: var(--state-lock-pending-color, var(--warning-color, #ffa600));
-    --rk-alert: var(--state-lock-jammed-color, var(--error-color, #db4437));
-    --rk-unknown: var(--state-unavailable-color, var(--disabled-text-color, #9e9e9e));
+    --rk-background: var(--ha-card-background, var(--card-background-color, #09090b));
+    --rk-foreground: var(--primary-text-color, #fafafa);
+    --rk-muted: var(--secondary-background-color, #27272a);
+    --rk-muted-foreground: var(--secondary-text-color, #a1a1aa);
+    --rk-border: var(--divider-color, rgba(255, 255, 255, .1));
+    --rk-ring: color-mix(in srgb, var(--rk-foreground) 35%, transparent);
+    --rk-locked: #10b981;
+    --rk-unlocked: #f59e0b;
+    --rk-pending: #3b82f6;
+    --rk-alert: #ef4444;
+    --rk-unknown: var(--rk-muted-foreground);
+    --rk-destructive: #ef4444;
+    --rk-radius: 12px;
+    font-family: var(--ha-font-family-body, var(--paper-font-body1_-_font-family, ui-sans-serif, system-ui, sans-serif));
+    -webkit-font-smoothing: antialiased;
   }
   .tone-locked { --rk-tone: var(--rk-locked); }
   .tone-unlocked { --rk-tone: var(--rk-unlocked); }
   .tone-pending { --rk-tone: var(--rk-pending); }
   .tone-alert { --rk-tone: var(--rk-alert); }
   .tone-unknown { --rk-tone: var(--rk-unknown); }
-  .badge {
-    display: flex; align-items: center; justify-content: center;
-    width: 44px; height: 44px; flex: none; border-radius: 50%;
-    color: var(--rk-tone);
-    background: color-mix(in srgb, var(--rk-tone) 20%, transparent);
+  .lucide { flex: none; display: block; }
+  .spin { animation: rk-spin 1s linear infinite; }
+  @keyframes rk-spin { to { transform: rotate(360deg); } }
+  .tint {
+    display: flex; align-items: center; justify-content: center; flex: none;
+    color: var(--rk-tone); background: color-mix(in srgb, var(--rk-tone) 14%, transparent);
+    border: 1px solid color-mix(in srgb, var(--rk-tone) 22%, transparent);
   }
-  .badge ha-icon { --mdc-icon-size: 24px; }
-  .pending ha-icon { animation: rk-pulse 1s ease-in-out infinite; }
-  @keyframes rk-pulse { 50% { opacity: .35; } }
-  button { font: inherit; color: inherit; }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    height: 36px; padding: 0 14px; border-radius: 8px; white-space: nowrap;
+    font: inherit; font-size: 14px; font-weight: 500; line-height: 1; cursor: pointer;
+    border: 1px solid transparent; transition: background .15s, color .15s, border-color .15s, opacity .15s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .btn:focus-visible { outline: 2px solid var(--rk-ring); outline-offset: 2px; }
+  .btn:disabled { opacity: .5; pointer-events: none; }
+  .btn-default { background: var(--rk-foreground); color: var(--rk-background); }
+  .btn-default:hover { opacity: .9; }
+  .btn-secondary { background: var(--rk-muted); color: var(--rk-foreground); }
+  .btn-secondary:hover { background: color-mix(in srgb, var(--rk-muted) 80%, var(--rk-foreground)); }
+  .btn-outline { background: transparent; color: var(--rk-foreground); border-color: var(--rk-border); }
+  .btn-outline:hover { background: var(--rk-muted); }
+  .btn-ghost { background: transparent; color: var(--rk-muted-foreground); }
+  .btn-ghost:hover { background: var(--rk-muted); color: var(--rk-foreground); }
+  .btn-destructive { background: var(--rk-destructive); color: #fff; }
+  .btn-sm { height: 32px; padding: 0 12px; font-size: 13px; border-radius: 7px; }
+  .btn-icon { width: 36px; padding: 0; }
+  .btn-lg { height: 44px; font-size: 15px; border-radius: 10px; }
 `;
 
 class RaykubeLockCard extends HTMLElement {
@@ -245,6 +318,7 @@ class RaykubeLockCard extends HTMLElement {
         { name: "entity", required: true, selector: { entity: { domain: "lock" } } },
         { name: "name", selector: { text: {} } },
         { name: "arming_entity", selector: { entity: { domain: "input_boolean" } } },
+        { name: "confirm_unlock", selector: { boolean: {} } },
       ],
     };
   }
@@ -260,8 +334,9 @@ class RaykubeLockCard extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
     if (!this._config) return;
+    this._settlePending();
     this._render();
-    if (this._panel) this._panel.update(hass, this._related(), this._config);
+    if (this._panel) this._panel.update(hass, this._related(), this._config, this);
   }
 
   get hass() {
@@ -282,6 +357,8 @@ class RaykubeLockCard extends HTMLElement {
 
   disconnectedCallback() {
     this._closePanel();
+    clearTimeout(this._confirmTimer);
+    clearTimeout(this._pendingTimer);
   }
 
   /** Entity ids of the lock's device, by role. */
@@ -304,6 +381,56 @@ class RaykubeLockCard extends HTMLElement {
     return related;
   }
 
+  /** Command sent from the card that the lock has not confirmed yet. */
+  get pending() {
+    return this._pending ? this._pending.action : null;
+  }
+
+  _settlePending() {
+    if (!this._pending) return;
+    const state = this._hass.states[this._config.entity]?.state;
+    const done = this._pending.action === "lock" ? state === "locked" : state === "unlocked" || state === "open";
+    if (done || state === "jammed" || Date.now() - this._pending.since > PENDING_TIMEOUT_MS) {
+      this._pending = null;
+      clearTimeout(this._pendingTimer);
+    }
+  }
+
+  /** Lock or unlock, honouring confirm_unlock. Returns false if waiting for confirmation. */
+  command(action, confirmKey = "tile") {
+    if (action === "unlock" && this._config.confirm_unlock && this._confirming !== confirmKey) {
+      this._confirming = confirmKey;
+      clearTimeout(this._confirmTimer);
+      this._confirmTimer = setTimeout(() => {
+        this._confirming = null;
+        this._rerender();
+      }, CONFIRM_MS);
+      this._rerender();
+      return false;
+    }
+    this._confirming = null;
+    clearTimeout(this._confirmTimer);
+    this._pending = { action, since: Date.now() };
+    clearTimeout(this._pendingTimer);
+    this._pendingTimer = setTimeout(() => {
+      this._pending = null;
+      this._rerender();
+    }, PENDING_TIMEOUT_MS);
+    this._haptic(action === "unlock" ? "success" : "light");
+    this._hass.callService("lock", action, { entity_id: this._config.entity });
+    this._rerender();
+    return true;
+  }
+
+  confirming(key) {
+    return this._confirming === key;
+  }
+
+  _rerender() {
+    this._render();
+    if (this._panel) this._panel.update(this._hass, this._related(), this._config, this);
+  }
+
   _render() {
     const hass = this._hass;
     const t = strings(hass);
@@ -315,40 +442,42 @@ class RaykubeLockCard extends HTMLElement {
         <style>
           ${SHARED_STYLE}
           ha-card {
-            display: flex; align-items: center; gap: 12px;
-            padding: 6px 8px 6px 10px; cursor: pointer;
-            user-select: none; -webkit-user-select: none;
-            -webkit-touch-callout: none; touch-action: manipulation;
-            transition: transform .12s ease;
+            display: flex; align-items: center; gap: 12px; height: 100%; box-sizing: border-box;
+            padding: 8px 8px 8px 10px; cursor: pointer; overflow: hidden;
+            border-radius: var(--ha-card-border-radius, var(--rk-radius));
+            user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+            touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+            transition: transform .12s ease, background .15s ease;
           }
-          ha-card.pressed { transform: scale(.98); }
+          ha-card:focus-visible { outline: 2px solid var(--rk-ring); outline-offset: 2px; }
+          ha-card.pressed { transform: scale(.985); }
+          .icon { width: 40px; height: 40px; border-radius: 10px; }
           .text { flex: 1; min-width: 0; }
+          .title { display: flex; align-items: center; gap: 6px; min-width: 0; }
           .name {
-            font-weight: 500; font-size: 15px; line-height: 20px;
+            font-size: 14px; font-weight: 600; line-height: 20px; color: var(--rk-foreground);
             white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
           }
-          .secondary {
-            font-size: 13px; line-height: 18px; color: var(--secondary-text-color);
-            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-          }
-          .battery { display: flex; align-items: center; color: var(--secondary-text-color); }
-          .battery ha-icon { --mdc-icon-size: 20px; }
+          .battery { display: inline-flex; flex: none; color: var(--rk-muted-foreground); }
           .battery.low { color: var(--rk-alert); }
-          .more {
-            display: flex; align-items: center; justify-content: center;
-            width: 40px; height: 40px; border: none; border-radius: 50%;
-            background: none; cursor: pointer; color: var(--secondary-text-color);
+          .meta {
+            display: flex; align-items: center; gap: 6px;
+            font-size: 12.5px; line-height: 18px; color: var(--rk-muted-foreground);
+            white-space: nowrap; overflow: hidden;
           }
-          .more:hover { background: var(--secondary-background-color); }
+          .meta .state { color: var(--rk-tone); font-weight: 500; }
+          .meta .sep { opacity: .5; }
+          .action { min-width: 92px; }
+          .more { color: var(--rk-muted-foreground); }
         </style>
         <ha-card tabindex="0" role="button">
-          <div class="badge"><ha-icon></ha-icon></div>
+          <div class="icon tint"></div>
           <div class="text">
-            <div class="name"></div>
-            <div class="secondary"></div>
+            <div class="title"><span class="name"></span><span class="battery"></span></div>
+            <div class="meta"></div>
           </div>
-          <div class="battery"><ha-icon></ha-icon></div>
-          <button class="more"><ha-icon icon="mdi:chevron-up"></ha-icon></button>
+          <button class="btn btn-sm action" tabindex="-1"></button>
+          <button class="btn btn-ghost btn-icon btn-sm more">${icon("chevron-up", 16)}</button>
         </ha-card>`;
       this._bindGestures();
     }
@@ -357,29 +486,42 @@ class RaykubeLockCard extends HTMLElement {
     const card = root.querySelector("ha-card");
     const name = this._config.name || stateObj?.attributes?.friendly_name || this._config.entity;
     const state = stateObj ? stateObj.state : "unavailable";
-    const visual = lockVisual(state);
+    const pending = this.pending;
+    const visual = pending ? { icon: "loader", tone: "pending" } : lockVisual(state);
     card.className = `tone-${visual.tone}`;
     card.setAttribute("aria-label", `${name}: ${t[state] || state}. ${t.tap_hint}`);
-    const badge = root.querySelector(".badge");
-    badge.classList.toggle("pending", visual.tone === "pending");
-    badge.querySelector("ha-icon").setAttribute("icon", visual.icon);
+    root.querySelector(".icon").innerHTML = icon(visual.icon, 20, visual.icon === "loader" ? "spin" : "");
     root.querySelector(".name").textContent = name;
-    const when = stateObj ? relativeTime(hass, stateObj.last_changed) : "";
-    root.querySelector(".secondary").textContent = [t[state] || state, when].filter(Boolean).join(" · ");
-    root.querySelector(".more").setAttribute("aria-label", t.more);
-    root.querySelector(".more").title = t.more;
+
+    const stateText = pending ? t[pending === "lock" ? "locking" : "unlocking"] : t[state] || state;
+    const meta = [`<span class="state">${esc(stateText)}</span>`];
+    if (stateObj && !pending) meta.push(`<span class="sep">·</span><span>${esc(shortAge(hass, stateObj.last_changed))}</span>`);
+    root.querySelector(".meta").innerHTML = meta.join("");
 
     const batteryId = this._related().battery;
     const battery = batteryId ? hass.states[batteryId] : undefined;
     const batteryEl = root.querySelector(".battery");
-    if (battery && ICONS[`battery_${battery.state}`]) {
+    // On the tile the battery only shows up as a low-battery warning.
+    if (battery && (battery.state === "low" || battery.state === "poweroff")) {
       batteryEl.hidden = false;
-      batteryEl.classList.toggle("low", battery.state === "low" || battery.state === "poweroff");
+      batteryEl.classList.add("low");
       batteryEl.title = `${t.battery}: ${t[`battery_${battery.state}`] || battery.state}`;
-      batteryEl.querySelector("ha-icon").setAttribute("icon", ICONS[`battery_${battery.state}`]);
+      batteryEl.innerHTML = icon(BATTERY_ICONS[battery.state], 14);
     } else {
       batteryEl.hidden = true;
     }
+
+    const action = root.querySelector(".action");
+    const target = toggleTarget(state);
+    const confirming = this.confirming("tile");
+    action.className = `btn btn-sm action ${confirming ? "btn-destructive" : target === "unlock" ? "btn-outline" : "btn-default"}`;
+    action.disabled = state === "unavailable" || Boolean(pending);
+    action.innerHTML = pending
+      ? `${icon("loader", 14, "spin")}<span>${esc(t[pending])}</span>`
+      : `${icon(target === "unlock" ? "lock-open" : "lock", 14)}<span>${esc(confirming ? t.confirm_unlock : t[target])}</span>`;
+    const more = root.querySelector(".more");
+    more.setAttribute("aria-label", t.more);
+    more.title = t.more;
   }
 
   _bindGestures() {
@@ -418,7 +560,7 @@ class RaykubeLockCard extends HTMLElement {
       const wasHeld = held;
       cancel();
       start = null;
-      if (!wasHeld) this._tapLock();
+      if (!wasHeld) this._tap();
     });
     card.addEventListener("pointercancel", () => {
       cancel();
@@ -428,7 +570,7 @@ class RaykubeLockCard extends HTMLElement {
     card.addEventListener("keydown", (ev) => {
       if (ev.key === "Enter" || ev.key === " ") {
         ev.preventDefault();
-        this._tapLock();
+        this._tap();
       }
     });
     more.addEventListener("click", (ev) => {
@@ -437,9 +579,10 @@ class RaykubeLockCard extends HTMLElement {
     });
   }
 
-  _tapLock() {
-    this._haptic("light");
-    this._hass.callService("lock", "lock", { entity_id: this._config.entity });
+  _tap() {
+    const state = this._hass.states[this._config.entity]?.state;
+    if (!state || state === "unavailable" || this.pending) return;
+    this.command(toggleTarget(state), "tile");
   }
 
   _haptic(type) {
@@ -451,7 +594,7 @@ class RaykubeLockCard extends HTMLElement {
     this._panel = document.createElement("raykube-lock-panel");
     this._panel.addEventListener("raykube-close", () => this._closePanel());
     document.body.appendChild(this._panel);
-    this._panel.update(this._hass, this._related(), this._config);
+    this._panel.update(this._hass, this._related(), this._config, this);
   }
 
   _closePanel() {
@@ -483,10 +626,11 @@ class RaykubeLockPanel extends HTMLElement {
     Object.values(this._confirm).forEach(clearTimeout);
   }
 
-  update(hass, related, config) {
+  update(hass, related, config, card) {
     this._hass = hass;
     this._related = related;
     this._config = config;
+    this._card = card;
     if (!this._built) this._build();
     this._refresh();
     const lock = hass.states[related.lock];
@@ -510,146 +654,125 @@ class RaykubeLockPanel extends HTMLElement {
         :host {
           position: fixed; inset: 0; z-index: 1000;
           display: flex; align-items: flex-end; justify-content: center;
-          font-family: var(--paper-font-body1_-_font-family, var(--ha-font-family-body, Roboto, sans-serif));
-          color: var(--primary-text-color);
+          color: var(--rk-foreground);
         }
-        .backdrop {
-          position: absolute; inset: 0; background: rgba(0, 0, 0, .55);
+        .overlay {
+          position: absolute; inset: 0; background: rgba(0, 0, 0, .6);
+          backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);
           animation: rk-fade .18s ease-out;
         }
         .sheet {
-          position: relative; width: 100%; max-width: 480px; max-height: 92vh;
-          overflow-y: auto; box-sizing: border-box;
-          padding: 8px 16px calc(20px + env(safe-area-inset-bottom));
-          background: var(--ha-card-background, var(--card-background-color, #1c1c1c));
-          border-radius: 24px 24px 0 0;
-          animation: rk-slide .22s ease-out;
+          position: relative; width: 100%; max-width: 440px; max-height: 92vh;
+          overflow-y: auto; overscroll-behavior: contain; box-sizing: border-box;
+          padding: 8px 20px calc(24px + env(safe-area-inset-bottom));
+          background: var(--rk-background); border: 1px solid var(--rk-border); border-bottom: none;
+          border-radius: 16px 16px 0 0; box-shadow: 0 -10px 40px rgba(0, 0, 0, .25);
+          animation: rk-slide .24s cubic-bezier(.32, .72, 0, 1);
         }
         @media (min-width: 600px) {
           :host { align-items: center; }
-          .sheet { border-radius: 24px; }
+          .sheet { border-radius: 16px; border-bottom: 1px solid var(--rk-border); }
         }
         @keyframes rk-fade { from { opacity: 0; } }
-        @keyframes rk-slide { from { transform: translateY(40px); opacity: 0; } }
-        .grab {
-          width: 40px; height: 4px; margin: 4px auto 8px; border-radius: 2px;
-          background: var(--divider-color, rgba(255,255,255,.2));
+        @keyframes rk-slide { from { transform: translateY(48px); opacity: 0; } }
+        .grab { width: 36px; height: 4px; margin: 6px auto 12px; border-radius: 99px; background: var(--rk-border); }
+        header { display: flex; align-items: flex-start; gap: 12px; }
+        header .titles { flex: 1; min-width: 0; padding-top: 4px; }
+        .title { font-size: 17px; font-weight: 600; letter-spacing: -.01em; }
+        .description { font-size: 13px; color: var(--rk-muted-foreground); margin-top: 2px; }
+        .status { display: flex; align-items: center; gap: 14px; margin: 20px 0 16px; }
+        .status .tint { width: 56px; height: 56px; border-radius: 14px; }
+        .status .state { font-size: 22px; font-weight: 600; letter-spacing: -.02em; }
+        .badge {
+          display: inline-flex; align-items: center; gap: 6px; margin-top: 4px;
+          padding: 2px 8px; border-radius: 99px; border: 1px solid var(--rk-border);
+          font-size: 12px; font-weight: 500; color: var(--rk-muted-foreground);
         }
-        .top { display: flex; align-items: center; gap: 12px; }
-        .top .title { flex: 1; min-width: 0; }
-        .title .name { font-size: 18px; font-weight: 500; }
-        .title .sub { font-size: 13px; color: var(--secondary-text-color); }
-        .icon-btn {
-          display: flex; align-items: center; justify-content: center;
-          width: 40px; height: 40px; border: none; border-radius: 50%;
-          background: none; cursor: pointer; color: var(--secondary-text-color);
+        .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .actions .btn { width: 100%; }
+        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin-top: 16px; }
+        .stat { border: 1px solid var(--rk-border); border-radius: 10px; padding: 10px 12px; }
+        .stat .label {
+          display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--rk-muted-foreground);
+          white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
-        .hero { text-align: center; padding: 16px 0 8px; }
-        .hero .badge { width: 88px; height: 88px; margin: 0 auto 10px; }
-        .hero .badge ha-icon { --mdc-icon-size: 44px; }
-        .hero .state { font-size: 26px; font-weight: 500; }
-        .hero .when { font-size: 14px; color: var(--secondary-text-color); margin-top: 2px; }
-        .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 16px 0; }
-        .action {
-          display: flex; align-items: center; justify-content: center; gap: 8px;
-          min-height: 56px; border-radius: 16px; border: none; cursor: pointer;
-          font-size: 16px; font-weight: 500;
-          background: var(--secondary-background-color, rgba(255,255,255,.06));
+        .stat .value { font-size: 15px; font-weight: 600; margin-top: 4px; }
+        .stat.low .value { color: var(--rk-alert); }
+        .section-title {
+          display: flex; align-items: center; gap: 8px; margin: 22px 0 8px;
+          font-size: 13px; font-weight: 600; color: var(--rk-foreground);
         }
-        .action.lock { color: var(--rk-locked); }
-        .action.unlock { color: var(--rk-unlocked); }
-        .action.armed {
-          color: var(--text-primary-color, #fff); background: var(--rk-unlocked);
+        .section-title .lucide { color: var(--rk-muted-foreground); }
+        .group { border: 1px solid var(--rk-border); border-radius: var(--rk-radius); overflow: hidden; }
+        .row { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 14px; }
+        .row + .row { border-top: 1px solid var(--rk-border); }
+        .row .lucide { color: var(--rk-muted-foreground); }
+        .row .label { flex: 1; font-size: 14px; font-weight: 500; }
+        .input {
+          width: 76px; height: 32px; box-sizing: border-box; padding: 0 10px; text-align: right;
+          border-radius: 7px; border: 1px solid var(--rk-border); background: transparent;
+          color: inherit; font: inherit; font-size: 14px;
         }
-        .action:disabled { opacity: .4; cursor: default; }
-        .chips { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 8px; }
-        .chip {
-          padding: 10px 12px; border-radius: 14px;
-          background: var(--secondary-background-color, rgba(255,255,255,.06));
-        }
-        .chip .label { font-size: 12px; color: var(--secondary-text-color); }
-        .chip .value { display: flex; align-items: center; gap: 4px; font-size: 15px; font-weight: 500; margin-top: 2px; }
-        .chip ha-icon { --mdc-icon-size: 18px; }
-        h3 {
-          margin: 20px 4px 6px; font-size: 13px; font-weight: 500; letter-spacing: .4px;
-          text-transform: uppercase; color: var(--secondary-text-color);
-        }
-        .rows { border-radius: 16px; overflow: hidden; background: var(--secondary-background-color, rgba(255,255,255,.06)); }
-        .row {
-          display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 14px;
-          border-bottom: 1px solid var(--divider-color, rgba(255,255,255,.08));
-        }
-        .row:last-child { border-bottom: none; }
-        .row .label { flex: 1; }
-        .row ha-icon { color: var(--secondary-text-color); }
-        .row button.link {
-          border: none; background: none; cursor: pointer; padding: 8px 0;
-          color: var(--primary-color); font-weight: 500;
-        }
-        .row button.link.armed { color: var(--rk-unlocked); }
-        .row input[type=number] {
-          width: 72px; padding: 6px 8px; border-radius: 8px; text-align: right;
-          border: 1px solid var(--divider-color, rgba(255,255,255,.2));
-          background: transparent; color: inherit; font: inherit;
-        }
+        .input:focus { outline: 2px solid var(--rk-ring); outline-offset: 1px; }
+        .unit { font-size: 13px; color: var(--rk-muted-foreground); }
         .switch {
-          position: relative; width: 44px; height: 26px; flex: none; border-radius: 13px;
-          border: none; cursor: pointer; background: var(--disabled-text-color, #666); transition: background .15s;
+          position: relative; flex: none; width: 36px; height: 20px; padding: 0; border-radius: 99px;
+          border: 2px solid transparent; cursor: pointer;
+          background: color-mix(in srgb, var(--rk-foreground) 18%, transparent);
+          transition: background .15s; box-sizing: content-box;
         }
         .switch::after {
-          content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px;
-          border-radius: 50%; background: #fff; transition: transform .15s;
+          content: ""; position: absolute; top: 0; left: 0; width: 20px; height: 20px; border-radius: 50%;
+          background: var(--rk-background); box-shadow: 0 1px 3px rgba(0, 0, 0, .3); transition: transform .15s;
         }
-        .switch[aria-checked=true] { background: var(--primary-color); }
-        .switch[aria-checked=true]::after { transform: translateX(18px); }
-        .event { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 14px;
-          border-bottom: 1px solid var(--divider-color, rgba(255,255,255,.08)); }
-        .event:last-child { border-bottom: none; }
-        .event .what { flex: 1; }
-        .event .src { font-size: 12px; color: var(--secondary-text-color); }
-        .event .time { font-size: 13px; color: var(--secondary-text-color); }
-        .empty { padding: 14px; color: var(--secondary-text-color); font-size: 14px; }
+        .switch[aria-checked=true] { background: var(--rk-foreground); }
+        .switch[aria-checked=true]::after { transform: translateX(16px); }
+        .switch:focus-visible { outline: 2px solid var(--rk-ring); outline-offset: 2px; }
+        .event { display: flex; align-items: center; gap: 12px; padding: 10px 14px; }
+        .event + .event { border-top: 1px solid var(--rk-border); }
+        .event .tint { width: 30px; height: 30px; border-radius: 8px; }
+        .event .what { flex: 1; min-width: 0; }
+        .event .what .s { font-size: 14px; font-weight: 500; }
+        .event .src { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--rk-muted-foreground); margin-top: 1px; }
+        .event .time { font-size: 12px; color: var(--rk-muted-foreground); font-variant-numeric: tabular-nums; }
+        .empty { padding: 16px 14px; font-size: 13px; color: var(--rk-muted-foreground); }
       </style>
-      <div class="backdrop"></div>
+      <div class="overlay"></div>
       <div class="sheet" role="dialog" aria-modal="true">
         <div class="grab"></div>
-        <div class="top">
-          <div class="title"><div class="name"></div><div class="sub"></div></div>
-          <button class="icon-btn" data-act="close" aria-label="${esc(t.close)}" title="${esc(t.close)}">
-            <ha-icon icon="mdi:close"></ha-icon></button>
-        </div>
-        <div class="hero">
-          <div class="badge"><ha-icon></ha-icon></div>
-          <div class="state"></div>
-          <div class="when"></div>
+        <header>
+          <div class="titles"><div class="title"></div><div class="description"></div></div>
+          <button class="btn btn-ghost btn-icon" data-act="close" aria-label="${esc(t.close)}" title="${esc(t.close)}">${icon("x", 18)}</button>
+        </header>
+        <div class="status">
+          <div class="tint"></div>
+          <div><div class="state"></div><div class="badge"></div></div>
         </div>
         <div class="actions">
-          <button class="action lock" data-act="lock"><ha-icon icon="${ICONS.lock}"></ha-icon><span>${esc(t.lock)}</span></button>
-          <button class="action unlock" data-act="unlock"><ha-icon icon="${ICONS.unlock}"></ha-icon><span>${esc(t.unlock)}</span></button>
+          <button class="btn btn-lg" data-act="lock"></button>
+          <button class="btn btn-lg" data-act="unlock"></button>
         </div>
-        <div class="chips"></div>
-        <h3>${esc(t.settings)}</h3>
-        <div class="rows settings"></div>
-        <h3>${esc(t.history)}</h3>
-        <div class="rows history"><div class="empty">…</div></div>
+        <div class="stats"></div>
+        <div class="section-title settings-title">${esc(t.settings)}</div>
+        <div class="group settings"></div>
+        <div class="section-title">${icon("history", 14)}${esc(t.history)}</div>
+        <div class="group history"><div class="empty">…</div></div>
       </div>`;
 
     const root = this.shadowRoot;
-    root.querySelector(".backdrop").addEventListener("click", () => {
-      // The click that follows the long press lands on the backdrop.
+    root.querySelector(".overlay").addEventListener("click", () => {
+      // The click that follows the long press lands on the overlay.
       if (Date.now() - this._openedAt > 400) this._close();
     });
     root.addEventListener("click", (ev) => {
       const el = ev.composedPath().find((n) => n.dataset && n.dataset.act);
-      if (el) this._act(el.dataset.act, el);
+      if (el) this._act(el.dataset.act);
     });
     root.addEventListener("change", (ev) => {
       const el = ev.composedPath()[0];
       if (el.dataset && el.dataset.act === "auto_lock_time") {
         const value = Number(el.value);
-        if (!Number.isNaN(value)) {
-          this._call("number", "set_value", this._related.auto_lock_time, { value });
-        }
+        if (!Number.isNaN(value)) this._call("number", "set_value", this._related.auto_lock_time, { value });
       }
     });
   }
@@ -660,18 +783,18 @@ class RaykubeLockPanel extends HTMLElement {
   }
 
   /** Second tap within CONFIRM_MS confirms a risky action. */
-  _confirmed(key, render) {
+  _confirmed(key) {
     if (this._confirm[key]) {
       clearTimeout(this._confirm[key]);
       delete this._confirm[key];
-      render();
+      this._refresh();
       return true;
     }
     this._confirm[key] = setTimeout(() => {
       delete this._confirm[key];
-      render();
+      this._refresh();
     }, CONFIRM_MS);
-    render();
+    this._refresh();
     return false;
   }
 
@@ -683,14 +806,8 @@ class RaykubeLockPanel extends HTMLElement {
         this._close();
         break;
       case "lock":
-        this._haptic("light");
-        this._call("lock", "lock", r.lock);
-        break;
       case "unlock":
-        if (this._confirmed("unlock", () => this._refresh())) {
-          this._haptic("success");
-          this._call("lock", "unlock", r.lock);
-        }
+        this._card.command(action, "panel");
         break;
       case "auto_lock":
         this._call("switch", s[r.auto_lock]?.state === "on" ? "turn_off" : "turn_on", r.auto_lock);
@@ -705,17 +822,11 @@ class RaykubeLockPanel extends HTMLElement {
         this._call("button", "press", r.refresh);
         break;
       case "calibrate":
-        if (this._confirmed("calibrate", () => this._refresh())) {
-          this._call("button", "press", r.calibrate);
-        }
+        if (this._confirmed("calibrate")) this._call("button", "press", r.calibrate);
         break;
       default:
         break;
     }
-  }
-
-  _haptic(type) {
-    this.dispatchEvent(new CustomEvent("haptic", { detail: type, bubbles: true, composed: true }));
   }
 
   _refresh() {
@@ -725,109 +836,109 @@ class RaykubeLockPanel extends HTMLElement {
     const root = this.shadowRoot;
     const lock = hass.states[r.lock];
     const state = lock ? lock.state : "unavailable";
-    const visual = lockVisual(state);
+    const pending = this._card?.pending;
+    const visual = pending ? { icon: "loader", tone: "pending" } : lockVisual(state);
     const name = this._config.name || lock?.attributes?.friendly_name || r.lock;
 
-    root.querySelector(".sheet").className = `sheet tone-${visual.tone}`;
-    root.querySelector(".top .name").textContent = name;
-    root.querySelector(".top .sub").textContent = lock?.attributes?.friendly_name !== name
-      ? lock?.attributes?.friendly_name || "" : "";
-    const badge = root.querySelector(".hero .badge");
-    badge.classList.toggle("pending", visual.tone === "pending");
-    badge.querySelector("ha-icon").setAttribute("icon", visual.icon);
-    root.querySelector(".hero .state").textContent = t[state] || state;
+    root.querySelector(".title").textContent = name;
+    root.querySelector(".description").textContent =
+      lock?.attributes?.friendly_name && lock.attributes.friendly_name !== name ? lock.attributes.friendly_name : "";
+    const status = root.querySelector(".status");
+    status.className = `status tone-${visual.tone}`;
+    status.querySelector(".tint").innerHTML = icon(visual.icon, 28, visual.icon === "loader" ? "spin" : "");
+    status.querySelector(".state").textContent = pending
+      ? t[pending === "lock" ? "locking" : "unlocking"] : t[state] || state;
+    const badge = status.querySelector(".badge");
     if (lock) {
       const ctx = lock.context || {};
-      const source = changeSource(t, ctx.user_id, ctx.parent_id);
-      root.querySelector(".hero .when").textContent =
-        `${t.changed}: ${relativeTime(hass, lock.last_changed)} · ${source}`;
+      const [source, sourceIcon] = changeSource(t, ctx.user_id, ctx.parent_id);
+      badge.hidden = false;
+      badge.innerHTML = `${icon(sourceIcon, 12)}<span>${esc(source)} · ${esc(relativeTime(hass, lock.last_changed))}</span>`;
     } else {
-      root.querySelector(".hero .when").textContent = "";
+      badge.hidden = true;
     }
 
-    const unavailable = !lock || state === "unavailable";
+    const unavailable = !lock || state === "unavailable" || Boolean(pending);
+    const target = toggleTarget(state);
     const lockBtn = root.querySelector('[data-act="lock"]');
     const unlockBtn = root.querySelector('[data-act="unlock"]');
     lockBtn.disabled = unavailable;
     unlockBtn.disabled = unavailable;
-    const confirming = Boolean(this._confirm.unlock);
-    unlockBtn.classList.toggle("armed", confirming);
-    unlockBtn.querySelector("span").textContent = confirming ? t.confirm_unlock : t.unlock;
+    lockBtn.className = `btn btn-lg ${target === "lock" ? "btn-default" : "btn-outline"}`;
+    const confirming = this._card?.confirming("panel");
+    unlockBtn.className = `btn btn-lg ${confirming ? "btn-destructive" : target === "unlock" ? "btn-default" : "btn-outline"}`;
+    lockBtn.innerHTML = `${icon("lock", 16)}<span>${esc(t.lock)}</span>`;
+    unlockBtn.innerHTML = `${icon("lock-open", 16)}<span>${esc(confirming ? t.confirm_unlock : t.unlock)}</span>`;
 
-    // Status chips
-    const chips = [];
+    // Stats
+    const stats = [];
     const battery = r.battery && hass.states[r.battery];
     if (battery) {
-      chips.push([t.battery, ICONS[`battery_${battery.state}`] || "mdi:battery-unknown",
-        t[`battery_${battery.state}`] || battery.state]);
+      const low = battery.state === "low" || battery.state === "poweroff";
+      stats.push([t.battery, BATTERY_ICONS[battery.state] || "battery", t[`battery_${battery.state}`] || battery.state, low]);
     }
     const autoLock = r.auto_lock && hass.states[r.auto_lock];
     const autoTime = r.auto_lock_time && hass.states[r.auto_lock_time];
     if (autoLock) {
-      const value = autoLock.state === "on"
-        ? (autoTime ? `${autoTime.state} ${t.seconds}` : t.on) : t.off;
-      chips.push([t.auto_lock_short, "mdi:lock-clock", value]);
-    }
-    const signal = r.signal && hass.states[r.signal];
-    if (signal && !Number.isNaN(Number(signal.state))) {
-      chips.push([t.signal, "mdi:bluetooth", `${signal.state} dBm`]);
+      stats.push([t.stat_auto_lock, "timer",
+        autoLock.state === "on" ? (autoTime ? `${autoTime.state} ${t.seconds}` : t.on) : t.off]);
     }
     const arming = r.arming && hass.states[r.arming];
     if (arming) {
-      chips.push([t.arming, arming.state === "on" ? "mdi:shield-lock" : "mdi:shield-off-outline",
-        arming.state === "on" ? t.on : t.off]);
+      stats.push([t.stat_arming, arming.state === "on" ? "shield-check" : "shield", arming.state === "on" ? t.on : t.off]);
     }
-    root.querySelector(".chips").innerHTML = chips.map(([label, icon, value]) => `
-      <div class="chip"><div class="label">${esc(label)}</div>
-      <div class="value"><ha-icon icon="${esc(icon)}"></ha-icon>${esc(value)}</div></div>`).join("");
+    const signal = r.signal && hass.states[r.signal];
+    if (signal && !Number.isNaN(Number(signal.state))) {
+      stats.push([t.signal, "bluetooth", `${signal.state} dBm`]);
+    }
+    root.querySelector(".stats").innerHTML = stats.map(([label, ic, value, low]) => `
+      <div class="stat ${low ? "low" : ""}"><div class="label">${icon(ic, 14)}${esc(label)}</div>
+      <div class="value">${esc(value)}</div></div>`).join("");
 
     // Settings
     const rows = [];
-    const toggle = (act, icon, label, entity) => {
+    const toggle = (act, ic, label, entity) => {
       if (!entity) return;
       const on = entity.state === "on";
-      rows.push(`<div class="row"><ha-icon icon="${icon}"></ha-icon><span class="label">${esc(label)}</span>
+      rows.push(`<div class="row">${icon(ic, 18)}<span class="label">${esc(label)}</span>
         <button class="switch" role="switch" aria-checked="${on}" aria-label="${esc(label)}" data-act="${act}"></button></div>`);
     };
-    toggle("arming", "mdi:shield-lock", t.arming, arming);
-    toggle("auto_lock", "mdi:lock-clock", t.auto_lock, autoLock);
+    toggle("arming", "shield", t.arming, arming);
+    toggle("auto_lock", "timer", t.auto_lock, autoLock);
+    const focused = root.activeElement?.dataset?.act === "auto_lock_time";
     if (autoTime) {
       const a = autoTime.attributes || {};
-      const focused = this.shadowRoot.activeElement?.dataset?.act === "auto_lock_time";
       const existing = root.querySelector('[data-act="auto_lock_time"]');
       const value = focused && existing ? existing.value : autoTime.state;
-      rows.push(`<div class="row"><ha-icon icon="mdi:timer-lock"></ha-icon><span class="label">${esc(t.auto_lock_after)}</span>
-        <input type="number" inputmode="numeric" data-act="auto_lock_time" min="${esc(a.min ?? 1)}" max="${esc(a.max ?? 1800)}"
-          step="${esc(a.step ?? 1)}" value="${esc(value)}"> ${esc(t.seconds)}</div>`);
+      rows.push(`<div class="row">${icon("timer", 18)}<span class="label">${esc(t.auto_lock_after)}</span>
+        <input class="input" type="number" inputmode="numeric" data-act="auto_lock_time"
+          min="${esc(a.min ?? 1)}" max="${esc(a.max ?? 1800)}" step="${esc(a.step ?? 1)}" value="${esc(value)}">
+        <span class="unit">${esc(t.seconds)}</span></div>`);
     }
-    toggle("mute", "mdi:volume-off", t.mute, r.mute && hass.states[r.mute]);
+    toggle("mute", "volume-x", t.mute, r.mute && hass.states[r.mute]);
     if (r.refresh) {
-      rows.push(`<div class="row"><ha-icon icon="mdi:refresh"></ha-icon><span class="label">${esc(t.refresh)}</span>
-        <button class="link" data-act="refresh">${esc(t.refresh_action)}</button></div>`);
+      rows.push(`<div class="row">${icon("refresh-cw", 18)}<span class="label">${esc(t.refresh)}</span>
+        <button class="btn btn-secondary btn-sm" data-act="refresh">${esc(t.refresh_action)}</button></div>`);
     }
     if (r.calibrate) {
       const armed = Boolean(this._confirm.calibrate);
-      rows.push(`<div class="row"><ha-icon icon="mdi:tune-vertical"></ha-icon><span class="label">${esc(t.calibrate)}</span>
-        <button class="link ${armed ? "armed" : ""}" data-act="calibrate">${esc(armed ? t.confirm_calibrate : t.calibrate_action)}</button></div>`);
+      rows.push(`<div class="row">${icon("crosshair", 18)}<span class="label">${esc(t.calibrate)}</span>
+        <button class="btn btn-sm ${armed ? "btn-destructive" : "btn-outline"}" data-act="calibrate">${esc(armed ? t.confirm_calibrate : t.calibrate_action)}</button></div>`);
     }
     const settings = root.querySelector(".settings");
     const html = rows.join("");
-    if (settings._html !== html) {
-      const focused = this.shadowRoot.activeElement?.dataset?.act === "auto_lock_time";
-      if (!focused) {
-        settings.innerHTML = html;
-        settings._html = html;
-      }
+    if (settings._html !== html && !focused) {
+      settings.innerHTML = html;
+      settings._html = html;
     }
     settings.hidden = rows.length === 0;
-    settings.previousElementSibling.hidden = rows.length === 0;
+    root.querySelector(".settings-title").hidden = rows.length === 0;
 
     this._renderHistory();
   }
 
   async _loadHistory() {
     const hass = this._hass;
-    const lockId = this._related.lock;
     if (!hass.callWS) return;
     const end = new Date();
     const start = new Date(end.getTime() - 48 * 3600 * 1000);
@@ -836,7 +947,7 @@ class RaykubeLockPanel extends HTMLElement {
         type: "logbook/get_events",
         start_time: start.toISOString(),
         end_time: end.toISOString(),
-        entity_ids: [lockId],
+        entity_ids: [this._related.lock],
       });
       this._history = (events || []).filter((e) => e.state).slice(-12).reverse();
     } catch (err) {
@@ -855,10 +966,11 @@ class RaykubeLockPanel extends HTMLElement {
     }
     box.innerHTML = this._history.map((e) => {
       const visual = lockVisual(e.state);
-      const source = changeSource(t, e.context_user_id, null, e.context_event_type, e.context_domain);
+      const [source, sourceIcon] = changeSource(t, e.context_user_id, null, e.context_event_type, e.context_domain);
       return `<div class="event tone-${visual.tone}">
-        <div class="badge" style="width:32px;height:32px"><ha-icon icon="${visual.icon}" style="--mdc-icon-size:18px"></ha-icon></div>
-        <div class="what"><div>${esc(t[e.state] || e.state)}</div><div class="src">${esc(source)}</div></div>
+        <div class="tint">${icon(visual.icon, 15)}</div>
+        <div class="what"><div class="s">${esc(t[e.state] || e.state)}</div>
+          <div class="src">${icon(sourceIcon, 12)}${esc(source)}</div></div>
         <div class="time">${esc(clockTime(this._hass, e.when * 1000))}</div></div>`;
     }).join("");
   }
@@ -873,10 +985,10 @@ if (!customElements.get("raykube-lock-card")) {
   window.customCards.push({
     type: "raykube-lock-card",
     name: "Raykube Lock",
-    description: "Dotknij, aby zamknąć; przytrzymaj, aby zobaczyć szczegóły i ustawienia zamka.",
+    description: "Dotknij, aby zamknąć lub otworzyć; przytrzymaj, aby zobaczyć szczegóły i ustawienia zamka.",
     preview: true,
     documentationURL: "https://github.com/jaroslaw-krolikowski/A1Pro/blob/master/docs/raykube-a1-pro.md",
   });
   console.info(`%c RAYKUBE-LOCK-CARD %c ${CARD_VERSION} `,
-    "color:#fff;background:#43a047;font-weight:700", "color:#43a047");
+    "color:#fff;background:#10b981;font-weight:700", "color:#10b981");
 }

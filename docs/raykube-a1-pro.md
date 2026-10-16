@@ -120,9 +120,10 @@ Ręcznie, bez skryptu:
 Integracja instaluje własną kartę dashboardu. HA ładuje ją sam, bez HACS frontend i bez dodawania zasobów.
 Standardowego okna zamka w HA (z dużym przełącznikiem) integracja zmienić nie może, więc ta karta je zastępuje.
 
-- **Stuknięcie** w kafelek **zamyka** zamek. Otwieranie z kafelka celowo nie jest możliwe.
+- **Stuknięcie** w kafelek **przełącza** zamek: otwiera zamknięty, zamyka otwarty. Przycisk po prawej
+  pokazuje, co zrobi stuknięcie. Do czasu potwierdzenia przez zamek kręci się wskaźnik.
 - **Przytrzymanie** (albo strzałka po prawej) otwiera panel ze szczegółami:
-  - przyciski **Zamknij** i **Otwórz**. Otwórz wymaga drugiego dotknięcia „Potwierdź otwarcie”;
+  - przyciski **Zamknij** i **Otwórz**. Wyróżniony jest ten, który zmienia aktualny stan;
   - stan i czas ostatniej zmiany z informacją, skąd przyszła: *na zamku* (gałka, klucz, aplikacja,
     auto-zamknięcie), *z Home Assistant* albo *automatyzacja*;
   - bateria, auto-zamykanie i jego czas, tryb uzbrojenia, opcjonalnie siła sygnału;
@@ -137,7 +138,11 @@ type: custom:raykube-lock-card
 entity: lock.raykube_a1_ultra_d9f494_zamek
 name: Drzwi wejściowe                        # opcjonalnie
 arming_entity: input_boolean.zamek_uzbrojony # opcjonalnie, pomocnik trybu uzbrojenia
+confirm_unlock: false                        # opcjonalnie: true = otwarcie wymaga drugiego dotknięcia
 ```
+
+Wygląd jest wzorowany na shadcn/ui, a ikony to [Lucide](https://lucide.dev) wbudowane w kartę.
+Karta dopasowuje się do jasnego i ciemnego motywu HA.
 
 Pozostałe encje zamka (bateria, auto-zamykanie, wyciszenie, przyciski) karta znajduje sama. Każdą można też
 wskazać ręcznie: `battery_entity`, `auto_lock_entity`, `auto_lock_time_entity`, `mute_entity`,
