@@ -33,6 +33,19 @@ Ten fork wysyła ją jako `enum`.
 2. Fork ma tę samą domenę (`tuya_local_ble`) co ShonP40/Tuya-BLE, więc **zastępuje** oryginał.
    Jeśli oryginał jest zainstalowany, usuń go z HACS (zostaw wpis integracji i `devices.json`) i zainstaluj fork.
 3. Uzupełnij `config/tuya_local_ble/devices.json` (niżej) i zrestartuj HA.
+4. Zamek pojawi się jako wykryty w *Ustawienia → Urządzenia i usługi*. Możesz go też dodać ręcznie:
+   *Dodaj integrację → Tuya Local BLE* i wybrać zamek z listy.
+
+Jeśli przy dodawaniu pojawia się komunikat, że HA nie widzi żadnego urządzenia Tuya BLE, to Bluetooth
+w HA nie widzi zamka. Najczęstsze przyczyny:
+- HA działa w maszynie wirtualnej (np. Proxmox), a adapter Bluetooth nie jest do niej przekazany.
+  Przekaż adapter USB do VM (*Hardware → Add → USB Device*) albo użyj ESPHome Bluetooth proxy.
+- Zamek jest poza zasięgiem adaptera.
+- Aplikacja Tuya/Smart Life jest w tej chwili połączona z zamkiem.
+
+Integracja Bluetooth w HA (*Ustawienia → Urządzenia i usługi → Bluetooth*) pokazuje, czy jest jakiś adapter
+lub proxy. Jeśli zamek jest na liście, ale nie ma go w `devices.json`, pojawi się błąd z prośbą o
+sprawdzenie adresu MAC w pliku.
 
 ## `devices.json`
 
