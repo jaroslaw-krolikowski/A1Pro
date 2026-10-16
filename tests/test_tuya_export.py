@@ -160,6 +160,16 @@ def test_export_builds_devices_json(tmp_path, monkeypatch, capsys):
         "auto_lock_time_min": 1,
         "auto_lock_time_max": 600,
         "calibrate_value": 0,
+        "dp_codes": {
+            "9": "battery_state",
+            "21": "alarm_lock",
+            "31": "beep_volume",
+            "33": "automatic_lock",
+            "36": "auto_lock_time",
+            "68": "special_function",
+            "78": "special_control",
+            "71": "ble_unlock_check",
+        },
     }
     raw = json.loads((tmp_path / f"{DEVICE_ID}.json").read_text(encoding="utf-8"))
     assert "提示音量" in raw["model"]["model"]

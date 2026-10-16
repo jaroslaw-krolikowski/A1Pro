@@ -188,6 +188,27 @@ await page.waitForTimeout(300);
 if (shots) await page.screenshot({ path: path.join(shots, "7-panel-unknown.png") });
 await unknownPanel.locator('[data-act="close"]').click();
 
+// English UI follows the language of Home Assistant (default config again)
+await page.evaluate((id) => {
+  window.card.setConfig({ entity: id });
+  const hass = window.makeHass();
+  hass.language = "en";
+  hass.locale = { language: "en" };
+  hass.states[id] = { ...hass.states[id], state: "locked" };
+  window.card.hass = hass;
+}, LOCK);
+assert.equal(await page.locator("raykube-lock-card .meta .state").textContent(), "Locked");
+assert.equal((await action.textContent()).trim(), "Unlock");
+await action.click();
+assert.deepEqual(await calls(), []);
+assert.equal((await action.textContent()).trim(), "Confirm");
+await page.locator("raykube-lock-card .more").click();
+await page.locator("raykube-lock-panel .stats").waitFor();
+assert.equal(await page.locator("raykube-lock-panel .settings-title").textContent(), "Settings");
+await page.waitForTimeout(300);
+if (shots) await page.screenshot({ path: path.join(shots, "8-panel-english.png") });
+await page.locator('raykube-lock-panel [data-act="close"]').click();
+
 // Bad config is rejected
 const err = await page.evaluate(() => {
   try { document.createElement("raykube-lock-card").setConfig({ entity: "switch.x" }); return null; }

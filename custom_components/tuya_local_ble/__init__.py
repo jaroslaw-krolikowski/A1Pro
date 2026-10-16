@@ -20,7 +20,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.typing import ConfigType
 
-from .tuya_ble import TuyaBLEDataPointType, TuyaBLEDevice
+from .tuya_ble import SOURCE_HOME_ASSISTANT, TuyaBLEDataPointType, TuyaBLEDevice
 
 from .keyman import HASSTuyaBLEDeviceManager
 from .const import DOMAIN
@@ -132,7 +132,9 @@ async def _async_set_datapoint(hass: HomeAssistant, call: ServiceCall) -> None:
     datapoints = data.device.datapoints
     datapoint = datapoints[dp_id]
     if datapoint is None or datapoint.type != dp_type:
-        datapoints._update_from_device(dp_id, time.time(), 0, dp_type, value)
+        datapoints._update_from_device(
+            dp_id, time.time(), 0, dp_type, value, source=SOURCE_HOME_ASSISTANT
+        )
         datapoint = datapoints[dp_id]
     await datapoint.set_value(value)
     data.coordinator.async_update_listeners()

@@ -85,7 +85,18 @@
     },
     "sensor": {
       "datapoints": {
-        "name": "Datapointy"
+        "name": "Datapointy",
+        "state_attributes": {
+          "not_from_lock": {
+            "name": "Nie od zamka"
+          },
+          "last_report": {
+            "name": "Ostatni raport"
+          },
+          "recent_changes": {
+            "name": "Ostatnie zmiany"
+          }
+        }
       },
       "battery_state": {
         "name": "Stan baterii",
@@ -97,6 +108,53 @@
       },
       "signal_strength": {
         "name": "Siła sygnału"
+      },
+      "connection": {
+        "name": "Połączenie",
+        "state": {
+          "connected": "Połączony",
+          "connecting": "Łączenie",
+          "disconnected": "Rozłączony",
+          "error": "Błąd"
+        },
+        "state_attributes": {
+          "last_connected": {
+            "name": "Ostatnie połączenie"
+          },
+          "last_disconnected": {
+            "name": "Ostatnie rozłączenie"
+          },
+          "last_error": {
+            "name": "Ostatni błąd"
+          },
+          "last_error_at": {
+            "name": "Czas ostatniego błędu"
+          },
+          "connect_attempts": {
+            "name": "Próby połączenia"
+          },
+          "failed_connections": {
+            "name": "Nieudane połączenia"
+          },
+          "last_frame_received": {
+            "name": "Ostatnia odebrana ramka"
+          },
+          "last_frame_received_code": {
+            "name": "Ostatnia odebrana ramka (typ)"
+          },
+          "last_frame_sent": {
+            "name": "Ostatnia wysłana ramka"
+          },
+          "last_frame_sent_code": {
+            "name": "Ostatnia wysłana ramka (typ)"
+          },
+          "last_device_report": {
+            "name": "Ostatni raport urządzenia"
+          },
+          "rssi": {
+            "name": "RSSI"
+          }
+        }
       }
     },
     "switch": {

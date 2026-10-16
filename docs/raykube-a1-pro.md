@@ -1,5 +1,7 @@
 # Raykube A1 Pro / A1 Pro Max / A1 Ultra w Home Assistant (lokalnie po BLE)
 
+🇬🇧 English version: [raykube-a1-pro.en.md](raykube-a1-pro.en.md)
+
 Ten fork [ShonP40/Tuya-BLE](https://github.com/ShonP40/Tuya-BLE) dodaje do zamków Raykube
 (`jtmspro`, `hc7n0urm` i `rlyxv7pe`) pełny zestaw ustawień w Home Assistant.
 
@@ -14,7 +16,8 @@ Ten fork [ShonP40/Tuya-BLE](https://github.com/ShonP40/Tuya-BLE) dodaje do zamk�
 | number: Czas automatycznego zamknięcia / Auto lock delay | opóźnienie auto-zamknięcia (s), zakres 1–1800 | 36 | value | DP z chmury Tuya i snapshotu BLE |
 | button: Kalibracja / Calibrate | kalibracja zamka | 68 = `function1` | enum | potwierdzone: kalibracja w aplikacji raportuje DP68 = `function1` (`hc7n0urm`) |
 | button: Odśwież stan / Refresh status | łączy się z zamkiem i pobiera pełny stan | – | – | – |
-| sensor: Datapointy / Datapoints | wszystkie DP odebrane z zamka (atrybuty) | – | – | diagnostyka |
+| sensor: Datapointy / Datapoints | wszystkie DP z nazwami, źródłem i ostatnimi zmianami (atrybuty) | – | – | diagnostyka, zob. [Diagnostyka](#diagnostyka) |
+| sensor: Połączenie / Connection | stan połączenia BLE, ostatni błąd, ostatnie ramki | – | – | diagnostyka |
 
 **Wyłączenie auto-zamykania.** Do tego służy przełącznik *Automatyczne zamykanie*. Czas `0` nie wyłącza
 auto-zamykania: zamek przyjmuje 1–1800 s, więc HA nie pozwala wpisać mniej niż 1 s. Gdy przełącznik
@@ -86,6 +89,7 @@ Blok `raykube` jest opcjonalny. Wszystkie klucze:
 | `unmute_level` | `normal` | poziom po odciszeniu, gdy nie znamy poprzedniego |
 | `calibrate_value` | 0 | indeks wartości DP68 wysyłany przy kalibracji (`function1` = 0) |
 | `auto_lock_time_min` / `auto_lock_time_max` | 1 / 1800 | zakres pola czasu (s) |
+| `dp_codes` | `hc7n0urm`: z modelu Tuya | nazwy DP w diagnostyce, np. `{"47": "lock_motor_state"}`; `tools/tuya_export.py` zapisuje je sam |
 
 `null` albo `0` przy DP wyłącza daną encję, np. `"dps": {"special_function": null}`.
 
@@ -255,6 +259,63 @@ zmiana zgłoszona przez sam zamek nie ma przypisanego użytkownika ani automatyz
    - sprawdź w *Ustawienia → Automatyzacje i sceny* → automatyzacja → **⋮ → Ślady**, czy się uruchomiła.
      Jeśli nie, HA nie dostał zmiany stanu, więc sprawdź krok 1 i zasięg Bluetooth.
    - Jeśli automatyzacja się uruchomiła, problem jest po stronie telefonu. Sprawdź kroki 2 i 3.
+
+## Diagnostyka
+
+Na stronie urządzenia (*Ustawienia → Urządzenia i usługi → Tuya Local BLE → zamek*) w sekcji
+*Diagnostyka* są dwa sensory oraz przycisk **Pobierz diagnostykę** w menu **⋮**.
+
+### Sensor „Połączenie”
+
+Stan połączenia Bluetooth z zamkiem:
+
+| Stan | Znaczenie |
+|---|---|
+| *Połączony* | HA ma aktywne połączenie z zamkiem |
+| *Rozłączony* | brak połączenia. Przy zamku na baterie to normalne między komendami |
+| *Łączenie* | HA właśnie próbuje się połączyć; atrybut *Próby połączenia* rośnie |
+| *Błąd* | ostatnia próba się nie udała; przyczyna jest w atrybucie *Ostatni błąd* |
+
+Atrybuty: *Ostatnie połączenie*, *Ostatnie rozłączenie*, *Ostatni błąd* i jego czas, *Próby połączenia*,
+*Nieudane połączenia*, *Ostatnia odebrana / wysłana ramka* (czas i typ, np. `FUN_RECEIVE_DP_V4`),
+*Ostatni raport urządzenia* i RSSI.
+
+Typowe wartości *Ostatniego błędu*:
+- `device not found, not in range or poor RSSI`: zamek poza zasięgiem adaptera albo proxy;
+- `pairing request failed`, `connected but not paired`: zamek odrzuca parowanie (sprawdź `local_key`
+  w `devices.json` albo czy aplikacja Tuya nie jest połączona);
+- `timeout waiting for the response to …`: połączenie jest, ale zamek nie odpowiada.
+
+### Sensor „Datapointy”
+
+- **Stan**: ile DP przysłał **sam zamek**. Wartości ustawione albo założone przez HA (np. po komendzie)
+  się nie liczą. Jeśli po **Odśwież stan** liczba nie rośnie, zamek nie odpowiada.
+- **Atrybuty `dp_<numer>_<kod>`**, np. `dp_47_lock_motor_state: false` (zamknięty),
+  `dp_31_beep_volume: normal`, `dp_36_auto_lock_time: 30`. Enumy są pokazane nazwami. DP bez kodu
+  w modelu Tuya mają sam numer (`dp_11`). DP z kluczami i kodami otwierania nie są pokazywane.
+- **Nie od zamka**: DP, których aktualna wartość pochodzi z HA (komenda, ustawienie czekające na potwierdzenie).
+- **Ostatni raport**: kiedy zamek ostatnio cokolwiek przysłał.
+- **Ostatnie zmiany**: 15 ostatnich zmian wartości, np.
+  `2026-10-16 21:24:59 dp_47_lock_motor_state: true → false (device)`. Źródło `device` to raport zamka,
+  `home_assistant` to wartość ustawiona przez HA.
+
+### Pobierz diagnostykę
+
+*Strona urządzenia → ⋮ → Pobierz diagnostykę* zapisuje plik JSON z całą powyższą zawartością:
+wersje urządzenia, stan połączenia, wszystkie DP (nazwa, typ, wartość, źródło, czas) i ostatnie 50 zmian.
+`local_key`, `uuid`, `device_id`, `ble_unlock_check` i wartości wrażliwych DP są zamaskowane,
+a z adresu MAC zostają tylko ostatnie 3 bajty. Plik można bezpiecznie dołączyć do zgłoszenia problemu.
+
+### Jak sprawdzić realny stan zamka zdalnie
+
+1. Naciśnij **Odśwież stan** (albo **Odśwież** w karcie).
+2. Po 15–30 s sprawdź sensor *Połączenie*: powinien być *Połączony* albo *Rozłączony* z świeżym
+   *Ostatnim połączeniem*. *Błąd* oznacza, że HA nie dogadał się z zamkiem; przyczyna jest w *Ostatnim błędzie*.
+3. W sensorze *Datapointy* sprawdź *Ostatni raport* (czy jest świeży) i `dp_47_lock_motor_state`:
+   `false` oznacza zamknięty, `true` otwarty.
+
+Szczegółowy zapis ramek daje log debug: *Tuya Local BLE → ⋮ → Włącz rejestrowanie debugowania*.
+Szukaj linii `Received FD50 V4 datapoint update, id: 47, …, value: False`.
 
 ## Historia zmian DP
 

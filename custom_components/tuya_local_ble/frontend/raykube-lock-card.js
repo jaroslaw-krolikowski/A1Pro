@@ -20,7 +20,7 @@
  * Look follows shadcn/ui; icons are Lucide (https://lucide.dev, ISC license).
  */
 
-const CARD_VERSION = "1.3.0";
+const CARD_VERSION = "1.4.0";
 const HOLD_MS = 500;
 const CONFIRM_MS = 4000;
 const PENDING_TIMEOUT_MS = 20000;
@@ -185,9 +185,34 @@ function esc(value) {
 }
 
 function strings(hass) {
-  const lang = (hass?.locale?.language || hass?.language || "en").split("-")[0];
+  const lang = (hass?.locale?.language || hass?.language || uiLanguage()).split("-")[0];
   return STRINGS[lang] || STRINGS.en;
 }
+
+/** Language of the HA frontend where no hass object is passed in (card picker, editor). */
+function uiLanguage() {
+  return (document.documentElement.lang || navigator.language || "en").split("-")[0];
+}
+
+const EDITOR_LABELS = {
+  pl: {
+    entity: "Zamek",
+    name: "Nazwa",
+    arming_entity: "Pomocnik trybu uzbrojenia",
+    confirm_unlock: "Potwierdzaj otwarcie drugim stuknięciem",
+  },
+  en: {
+    entity: "Lock",
+    name: "Name",
+    arming_entity: "Arming mode helper",
+    confirm_unlock: "Confirm unlocking with a second tap",
+  },
+};
+
+const CARD_DESCRIPTIONS = {
+  pl: "Przycisk zamyka lub otwiera zamek (otwarcie z potwierdzeniem); dotknięcie kafelka pokazuje szczegóły i ustawienia.",
+  en: "The button locks or unlocks (unlocking asks for confirmation); a tap on the tile shows details and settings.",
+};
 
 function relativeTime(hass, iso, style = "long") {
   if (!iso) return "";
@@ -336,12 +361,13 @@ class RaykubeLockCard extends HTMLElement {
         { name: "arming_entity", selector: { entity: { domain: "input_boolean" } } },
         { name: "confirm_unlock", selector: { boolean: {} } },
       ],
+      computeLabel: (schema) => (EDITOR_LABELS[uiLanguage()] || EDITOR_LABELS.en)[schema.name],
     };
   }
 
   setConfig(config) {
     if (!config || !config.entity || !String(config.entity).startsWith("lock.")) {
-      throw new Error("Podaj encję zamka: entity: lock.…");
+      throw new Error(uiLanguage() === "pl" ? "Podaj encję zamka: entity: lock.…" : "Set a lock entity: entity: lock.…");
     }
     // Unlock confirmation is on unless explicitly turned off.
     this._config = { ...config, confirm_unlock: config.confirm_unlock !== false };
@@ -1021,7 +1047,7 @@ if (!customElements.get("raykube-lock-card")) {
   window.customCards.push({
     type: "raykube-lock-card",
     name: "Raykube Lock",
-    description: "Przycisk zamyka lub otwiera zamek (otwarcie z potwierdzeniem); dotknięcie kafelka pokazuje szczegóły i ustawienia.",
+    description: CARD_DESCRIPTIONS[uiLanguage()] || CARD_DESCRIPTIONS.en,
     preview: true,
     documentationURL: "https://github.com/jaroslaw-krolikowski/A1Pro/blob/master/docs/raykube-a1-pro.md",
   });

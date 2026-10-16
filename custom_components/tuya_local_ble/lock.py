@@ -26,7 +26,7 @@ from homeassistant.const import (
 
 from .const import CONF_KEEP_CONNECTED, DOMAIN
 from .devices import TuyaBLEData, TuyaBLEEntity, TuyaBLEProductInfo
-from .tuya_ble import TuyaBLEDataPointType, TuyaBLEDevice
+from .tuya_ble import SOURCE_HOME_ASSISTANT, TuyaBLEDataPointType, TuyaBLEDevice
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -318,7 +318,8 @@ class TuyaBLELock(TuyaBLEEntity, LockEntity):
             await datapoint.set_value(True)
             state_value = False if self._mapping.value_means_locked else True
             self._device.datapoints._update_from_device(
-                self._mapping.dp_id, time.time(), 0, TuyaBLEDataPointType.DT_BOOL, state_value
+                self._mapping.dp_id, time.time(), 0, TuyaBLEDataPointType.DT_BOOL, state_value,
+                source=SOURCE_HOME_ASSISTANT,
             )
             self._current_state = LockState.UNLOCKED
             self._commanded = False
@@ -332,7 +333,8 @@ class TuyaBLELock(TuyaBLEEntity, LockEntity):
             await datapoint.set_value(True)
             state_value = True if self._mapping.value_means_locked else False
             self._device.datapoints._update_from_device(
-                self._mapping.dp_id, time.time(), 0, TuyaBLEDataPointType.DT_BOOL, state_value
+                self._mapping.dp_id, time.time(), 0, TuyaBLEDataPointType.DT_BOOL, state_value,
+                source=SOURCE_HOME_ASSISTANT,
             )
             self._current_state = LockState.LOCKED
             self._commanded = False
@@ -361,6 +363,7 @@ class TuyaBLELock(TuyaBLEEntity, LockEntity):
             0,
             TuyaBLEDataPointType.DT_ENUM,
             1 if state == LockState.UNLOCKED else 0,
+            source=SOURCE_HOME_ASSISTANT,
         )
         self._current_state = state
         self._commanded = False

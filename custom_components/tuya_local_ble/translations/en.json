@@ -1,7 +1,8 @@
 {
     "config": {
       "abort": {
-        "no_unconfigured_devices": "Home Assistant Bluetooth does not see any unconfigured Tuya BLE device. Check that Bluetooth works in Home Assistant (adapter passed through to the VM or an ESPHome Bluetooth proxy), that the device is in range and that the Tuya app is not connected to it."
+        "no_unconfigured_devices": "Home Assistant Bluetooth does not see any unconfigured Tuya BLE device. Check that Bluetooth works in Home Assistant (adapter passed through to the VM or an ESPHome Bluetooth proxy), that the device is in range and that the Tuya app is not connected to it.",
+        "already_configured": "This device is already configured."
       },
       "error": {
         "device_not_registered": "This device is not in config/tuya_local_ble/devices.json (or the file is missing). Check the MAC address key in the file."
@@ -121,7 +122,13 @@
           }
         },
         "beep_volume": {
-            "name": "Lock Volume"
+          "name": "Lock Volume",
+          "state": {
+            "mute": "Muted",
+            "low": "Low",
+            "normal": "Normal",
+            "high": "High"
+          }
         },
         "lock_direction": {
           "name": "Lock Direction"
@@ -134,7 +141,35 @@
       },
       "sensor": {
         "datapoints": {
-          "name": "Datapoints"
+          "name": "Datapoints",
+          "state_attributes": {
+            "not_from_lock": { "name": "Not reported by the lock" },
+            "last_report": { "name": "Last report" },
+            "recent_changes": { "name": "Recent changes" }
+          }
+        },
+        "connection": {
+          "name": "Connection",
+          "state": {
+            "connected": "Connected",
+            "connecting": "Connecting",
+            "disconnected": "Disconnected",
+            "error": "Error"
+          },
+          "state_attributes": {
+            "last_connected": { "name": "Last connected" },
+            "last_disconnected": { "name": "Last disconnected" },
+            "last_error": { "name": "Last error" },
+            "last_error_at": { "name": "Last error at" },
+            "connect_attempts": { "name": "Connection attempts" },
+            "failed_connections": { "name": "Failed connections" },
+            "last_frame_received": { "name": "Last frame received" },
+            "last_frame_received_code": { "name": "Last frame received (type)" },
+            "last_frame_sent": { "name": "Last frame sent" },
+            "last_frame_sent_code": { "name": "Last frame sent (type)" },
+            "last_device_report": { "name": "Last report from the device" },
+            "rssi": { "name": "RSSI" }
+          }
         },
         "battery": {
           "name": "Battery"
