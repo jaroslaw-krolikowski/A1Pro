@@ -11,10 +11,14 @@ Ten fork [ShonP40/Tuya-BLE](https://github.com/ShonP40/Tuya-BLE) dodaje do zamk�
 | select: Głośność zamka / Lock Volume | głośność: `hc7n0urm` mute / normal, `rlyxv7pe` mute / low / normal / high | 31 | enum | model DP z chmury Tuya |
 | switch: Wyciszenie / Mute | wycisz / odcisz | 31 | enum | j.w. Odciszenie przywraca ostatni poziom |
 | switch: Automatyczne zamykanie / Auto Lock | auto-zamykanie po otwarciu | 33 | bool | DP z chmury Tuya i snapshotu BLE |
-| number: Czas automatycznego zamknięcia / Auto lock delay | opóźnienie auto-zamknięcia (s) | 36 | value | DP z chmury Tuya i snapshotu BLE |
+| number: Czas automatycznego zamknięcia / Auto lock delay | opóźnienie auto-zamknięcia (s), zakres 1–1800 | 36 | value | DP z chmury Tuya i snapshotu BLE |
 | button: Kalibracja / Calibrate | kalibracja zamka | 68 = `function1` | enum | potwierdzone: kalibracja w aplikacji raportuje DP68 = `function1` (`hc7n0urm`) |
 | button: Odśwież stan / Refresh status | łączy się z zamkiem i pobiera pełny stan | – | – | – |
 | sensor: Datapointy / Datapoints | wszystkie DP odebrane z zamka (atrybuty) | – | – | diagnostyka |
+
+**Wyłączenie auto-zamykania.** Do tego służy przełącznik *Automatyczne zamykanie*. Czas `0` nie wyłącza
+auto-zamykania: zamek przyjmuje 1–1800 s, więc HA nie pozwala wpisać mniej niż 1 s. Gdy przełącznik
+jest wyłączony, ustawiony czas nie ma znaczenia i zostaje zapamiętany na później.
 
 Skąd te numery DP:
 - lista DP `hc7n0urm` z chmury Tuya ([make-all/tuya-local#4098](https://github.com/make-all/tuya-local/issues/4098)),
@@ -126,18 +130,49 @@ gałkę, użył klucza albo otworzył z aplikacji Tuya), HA wysyła powiadomieni
 automatyzacja, asystent głosowy) powiadomienia nie wysyła. HA rozpoznaje to po kontekście zmiany stanu:
 zmiana zgłoszona przez sam zamek nie ma przypisanego użytkownika ani automatyzacji.
 
+> **Wymagane: stałe połączenie z zamkiem (24/7).** Bez niego zamek śpi, a HA łączy się z nim tylko
+> przy komendzie albo odświeżeniu. Wtedy o ręcznym otwarciu dowiaduje się z opóźnieniem do ok. 5 minut
+> albo wcale. Włączenie opisuje krok 1.
+
 ### Konfiguracja
 
-1. Utwórz pomocnika: *Ustawienia → Urządzenia i usługi → Pomocnicy → Utwórz pomocnika → Przełącznik*,
-   np. „Zamek uzbrojony” (`input_boolean.zamek_uzbrojony`).
-2. Zaimportuj blueprint: *Ustawienia → Automatyzacje i sceny → Blueprinty → Importuj blueprint* i wklej
+1. **Włącz stałe połączenie Bluetooth.**
+   *Ustawienia → Urządzenia i usługi → Tuya Local BLE* → przy zamku menu **⋮** (albo ikona koła zębatego)
+   → **Opcje** / **Konfiguruj** → zaznacz **Stałe połączenie (24/7)** (*Keep connected (24/7)*)
+   → **Zatwierdź**. Integracja przeładuje się sama.
+   - Stałe połączenie zużywa więcej baterii zamka. Sprawdzaj encję baterii w pierwszych tygodniach.
+   - Najlepiej działa z ESPHome Bluetooth proxy blisko drzwi. Przy słabym zasięgu połączenie
+     będzie się zrywać i powiadomienia mogą przychodzić z opóźnieniem.
+   - Aplikacja Tuya/Smart Life nie połączy się z zamkiem, dopóki HA trzyma połączenie.
+     Na czas korzystania z aplikacji wyłącz tę opcję.
+2. **Zainstaluj aplikację Home Assistant na telefonie** i zaloguj się do swojego HA.
+   Telefon pojawi się jako urządzenie integracji *Mobile App*, a w HA powstanie akcja
+   `notify.mobile_app_<nazwa_telefonu>`. Pełną nazwę znajdziesz w *Narzędzia deweloperskie → Akcje*
+   po wpisaniu `notify.mobile_app`.
+   - **iPhone:**
+     - przy pierwszym uruchomieniu zezwól na powiadomienia;
+     - żeby alarm przebijał tryb cichy i Skupienie, włącz *Ustawienia iOS → Home Assistant →
+       Powiadomienia → **Alerty krytyczne***.
+   - **Android:**
+     - zezwól na powiadomienia (Android 13+ pyta o to przy pierwszym uruchomieniu);
+     - w *Ustawienia Androida → Aplikacje → Home Assistant → Bateria* wybierz **Bez ograniczeń**,
+       żeby system nie usypiał aplikacji;
+     - kanał `alarm_stream` z przykładu niżej gra dźwiękiem alarmu także przy wyciszonym telefonie.
+3. **Wyślij powiadomienie testowe.** *Narzędzia deweloperskie → Akcje* → `notify.mobile_app_<nazwa_telefonu>`
+   → tryb YAML → wklej przykład dla swojego telefonu z kroku 6 → **Wykonaj akcję**. Jeśli nic nie przyszło,
+   wróć do kroku 2.
+4. **Utwórz pomocnika:** *Ustawienia → Urządzenia i usługi → Pomocnicy → Utwórz pomocnika → Przełącznik*,
+   np. „Zamek uzbrojony” (`input_boolean.zamek_uzbrojony`). To jest włącznik trybu uzbrojenia.
+   Możesz go dodać do karty *Raykube Lock* (`arming_entity`), na dashboard albo włączać automatyzacją.
+5. **Zaimportuj blueprint:** *Ustawienia → Automatyzacje i sceny → Blueprinty → Importuj blueprint* i wklej
    `https://github.com/jaroslaw-krolikowski/A1Pro/blob/master/blueprints/automation/a1pro/lock_arming_alarm.yaml`.
    Możesz też skopiować plik do `config/blueprints/automation/a1pro/`.
-3. Utwórz z niego automatyzację: wybierz zamek i pomocnika. W polu **Powiadomienie** wklej (w trybie YAML)
-   akcję aplikacji mobilnej HA. `mobile_app_twoj_telefon` zamień na nazwę swojego telefonu z listy
-   usług `notify`.
+6. **Utwórz automatyzację z blueprintu:** wybierz zamek i pomocnika. W polu **Powiadomienie** przełącz
+   się na tryb YAML (menu **⋮ → Edytuj w YAML**) i wklej akcję dla swojego telefonu.
+   `mobile_app_twoj_telefon` zamień na nazwę z kroku 2. Po stuknięciu w powiadomienie otworzy się
+   dashboard HA; ścieżkę `/lovelace/0` możesz zmienić na swoją.
 
-   Android (dźwięk alarmu także przy wyciszonym telefonie):
+   **Android** (dźwięk alarmu także przy wyciszonym telefonie):
    ```yaml
    - action: notify.mobile_app_twoj_telefon
      data:
@@ -147,9 +182,11 @@ zmiana zgłoszona przez sam zamek nie ma przypisanego użytkownika ani automatyz
          ttl: 0
          priority: high
          channel: alarm_stream
+         tag: zamek-uzbrojenie
+         clickAction: /lovelace/0
    ```
 
-   iPhone (alert krytyczny, przebija tryb cichy):
+   **iPhone** (alert krytyczny, przebija tryb cichy):
    ```yaml
    - action: notify.mobile_app_twoj_telefon
      data:
@@ -161,10 +198,19 @@ zmiana zgłoszona przez sam zamek nie ma przypisanego użytkownika ani automatyz
              name: default
              critical: 1
              volume: 1.0
+         url: /lovelace/0
    ```
-4. W opcjach integracji Tuya Local BLE włącz **Keep connected (24/7)**. Bez stałego połączenia HA
-   dowiaduje się o ręcznym otwarciu dopiero przy kolejnym odświeżeniu, nawet po ok. 5 minutach.
-   Stałe połączenie zużywa więcej baterii zamka. Najlepiej działa przez ESPHome BLE proxy blisko drzwi.
+
+   Kilka telefonów: wklej kilka akcji jedna pod drugą albo użyj grupy `notify`.
+7. **Sprawdź działanie:**
+   - włącz pomocnika i przekręć gałkę zamka ręką. Powiadomienie powinno przyjść w ciągu kilku sekund;
+   - otwórz zamek z HA. Powiadomienia być nie powinno;
+   - wyłącz pomocnika i przekręć gałkę. Powiadomienia też być nie powinno.
+
+   Jeśli powiadomienie nie przychodzi:
+   - sprawdź w *Ustawienia → Automatyzacje i sceny* → automatyzacja → **⋮ → Ślady**, czy się uruchomiła.
+     Jeśli nie, HA nie dostał zmiany stanu, więc sprawdź krok 1 i zasięg Bluetooth.
+   - Jeśli automatyzacja się uruchomiła, problem jest po stronie telefonu. Sprawdź kroki 2 i 3.
 
 ## Historia zmian DP
 
@@ -232,7 +278,7 @@ Identyfikatory encji (`lock.twoj_zamek` itd.) podmień na swoje z ustawień urz�
 
 - Zamek na baterie śpi między komendami. HA łączy się na żądanie, więc każda zmiana trwa kilka sekund.
   Stan ustawień odświeża się przy każdym połączeniu (snapshot), przyciskiem **Odśwież stan**
-  albo na stałe przy opcji *Keep connected (24/7)* w opcjach integracji (wtedy lepiej użyć ESPHome BLE proxy).
+  albo na stałe przy opcji *Stałe połączenie (24/7)* w opcjach integracji (wtedy lepiej użyć ESPHome BLE proxy).
 - Aplikacja Tuya/Smart Life i HA nie mogą być połączone z zamkiem jednocześnie.
 - Na części egzemplarzy z firmware 5.6 `ble_unlock_check` zmienia się po każdym otwarciu z aplikacji
   i otwieranie z HA przestaje działać. Zobacz [ShonP40/Tuya-BLE#17](https://github.com/ShonP40/Tuya-BLE/issues/17).

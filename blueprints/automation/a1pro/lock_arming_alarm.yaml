@@ -10,9 +10,12 @@ blueprint:
     głosowego) nie wysyła powiadomienia.
 
 
-    Szybkie wykrycie wymaga stałego połączenia BLE z zamkiem: opcja
-    "Keep connected (24/7)" integracji Tuya Local BLE (najlepiej przez
-    ESPHome BLE proxy).
+    Wymaga stałego połączenia BLE z zamkiem: w opcjach integracji
+    Tuya Local BLE (Ustawienia > Urządzenia i usługi > Tuya Local BLE >
+    Konfiguruj) włącz "Stałe połączenie (24/7)" / "Keep connected (24/7)",
+    najlepiej przez ESPHome BLE proxy. Bez tego HA dowiaduje się o ręcznym
+    otwarciu z opóźnieniem albo wcale. Konfiguracja telefonu (iPhone i
+    Android): docs/raykube-a1-pro.md w repozytorium.
   domain: automation
   source_url: https://github.com/jaroslaw-krolikowski/A1Pro/blob/master/blueprints/automation/a1pro/lock_arming_alarm.yaml
   input:
