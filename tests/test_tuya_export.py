@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import io
 import json
 import subprocess
 import sys
@@ -31,7 +32,7 @@ MODEL = {
                  "typeSpec": {"type": "bool"}},
                 {"abilityId": 21, "code": "alarm_lock", "accessMode": "ro",
                  "typeSpec": {"type": "enum", "range": ["low_battery", "defense"]}},
-                {"abilityId": 31, "code": "beep_volume", "accessMode": "rw",
+                {"abilityId": 31, "code": "beep_volume", "name": "提示音量", "accessMode": "rw",
                  "typeSpec": {"type": "enum", "range": ["mute", "normal"]}},
                 {"abilityId": 33, "code": "automatic_lock", "accessMode": "rw",
                  "typeSpec": {"type": "bool"}},
@@ -65,7 +66,7 @@ RESPONSES = {
         {"code": "ble_unlock_check", "value": "AAH//zEyMzQ1Njc4AaqrzN0AAA=="},
     ],
     f"/v1.1/devices/{DEVICE_ID}/specifications": {"functions": [], "status": []},
-    f"/v2.0/cloud/thing/{DEVICE_ID}/model": {"model": json.dumps(MODEL)},
+    f"/v2.0/cloud/thing/{DEVICE_ID}/model": {"model": json.dumps(MODEL, ensure_ascii=False)},
     f"/v2.0/cloud/thing/{DEVICE_ID}/shadow/properties": {"properties": []},
 }
 
@@ -102,6 +103,8 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def test_export_builds_devices_json(tmp_path, monkeypatch):
+    # Simulate Windows: the default text encoding is a legacy code page.
+    monkeypatch.setattr(io, "text_encoding", lambda encoding, stacklevel=2: encoding or "cp1250")
     server = HTTPServer(("127.0.0.1", 0), Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     monkeypatch.setitem(tuya_export.REGIONS, "eu", f"http://127.0.0.1:{server.server_port}")
@@ -113,7 +116,7 @@ def test_export_builds_devices_json(tmp_path, monkeypatch):
     finally:
         server.shutdown()
 
-    devices = json.loads((tmp_path / "devices.json").read_text())
+    devices = json.loads((tmp_path / "devices.json").read_text(encoding="utf-8"))
     assert list(devices) == ["DC:23:AA:BB:CC:DD"]
     entry = devices["DC:23:AA:BB:CC:DD"]
     assert entry["uuid"] == "uuid0001"
@@ -133,7 +136,8 @@ def test_export_builds_devices_json(tmp_path, monkeypatch):
         "auto_lock_time_max": 600,
         "calibrate_value": 0,
     }
-    assert (tmp_path / f"{DEVICE_ID}.json").exists()
+    raw = json.loads((tmp_path / f"{DEVICE_ID}.json").read_text(encoding="utf-8"))
+    assert "提示音量" in raw["model"]["model"]
 
 
 def test_alarm_is_not_an_arming_candidate():

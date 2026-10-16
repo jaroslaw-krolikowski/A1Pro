@@ -253,6 +253,11 @@ def describe_spec(spec: dict) -> str:
 
 
 def main() -> int:
+    # Windows consoles default to a legacy code page (e.g. cp1250); never
+    # crash on device names it cannot show.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(errors="replace")
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--access-id", default=os.environ.get("TUYA_ACCESS_ID"))
     parser.add_argument("--access-secret", default=os.environ.get("TUYA_ACCESS_SECRET"))
@@ -311,7 +316,7 @@ def main() -> int:
         product_id = details.get("product_id", "")
 
         (out_dir / f"{device_id}.json").write_text(
-            json.dumps(raw, indent=2, ensure_ascii=False) + "\n"
+            json.dumps(raw, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
         )
 
         entry = {
@@ -361,7 +366,7 @@ def main() -> int:
                   "(sprawdź według docs/raykube-a1-pro.md).")
 
     (out_dir / "devices.json").write_text(
-        json.dumps(devices_json, indent=2, ensure_ascii=False) + "\n"
+        json.dumps(devices_json, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
     print(f"\nZapisano {out_dir / 'devices.json'} oraz surowe odpowiedzi w {out_dir}/.")
     print("Skopiuj devices.json do config/tuya_local_ble/devices.json w Home Assistant. "
