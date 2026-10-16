@@ -15,8 +15,9 @@ from homeassistant.components.lock import (
     LockState,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from homeassistant.const import (
@@ -28,6 +29,10 @@ from .devices import TuyaBLEData, TuyaBLEEntity, TuyaBLEProductInfo
 from .tuya_ble import TuyaBLEDataPointType, TuyaBLEDevice
 
 _LOGGER = logging.getLogger(__name__)
+
+# Raykube FD50 locks: after a lock/unlock command, ask the lock for its real
+# state once the motor has finished (it reports DP47 ~7 s after a command).
+RAYKUBE_STATE_REFRESH_DELAY = 12
 
 TuyaBLELockIsAvailable = Callable[["TuyaBLELock", TuyaBLEProductInfo], bool] | None
 
@@ -190,6 +195,7 @@ class TuyaBLELock(TuyaBLEEntity, LockEntity):
         self._commanded_timer = None
         self._datapoint_nop = None
         self._isjammed = False
+        self._unsub_state_refresh: CALLBACK_TYPE | None = None
         self._keep_connect_stop = Event()
         self._keep_connect_thread: Thread | None = None
         self._update_attrs()
@@ -214,6 +220,9 @@ class TuyaBLELock(TuyaBLEEntity, LockEntity):
 
     async def async_will_remove_from_hass(self) -> None:
         """Stop keepalive thread when the entity is removed/reloaded."""
+        if self._unsub_state_refresh is not None:
+            self._unsub_state_refresh()
+            self._unsub_state_refresh = None
         self._keep_connect_stop.set()
         thread = self._keep_connect_thread
         if thread is not None and thread.is_alive():
@@ -285,22 +294,9 @@ class TuyaBLELock(TuyaBLEEntity, LockEntity):
             False,
         )
 
-        if self._device.product_id in ("hc7n0urm", "y2yaegze") and self._target_state == LockState.UNLOCKED:
+        if self._device.product_id in ("hc7n0urm", "y2yaegze"):
             await datapoint.set_value(True)
-            self._current_state = LockState.UNLOCKED
-            self._commanded = False
-            self._isjammed = False
-            self._update_attrs()
-            self.async_write_ha_state()
-            return
-
-        if self._device.product_id in ("hc7n0urm", "y2yaegze") and self._target_state == LockState.LOCKED:
-            await datapoint.set_value(True)
-            self._current_state = LockState.LOCKED
-            self._commanded = False
-            self._isjammed = False
-            self._update_attrs()
-            self.async_write_ha_state()
+            self._apply_raykube_commanded_state(self._target_state)
             return
 
         if self._device.product_id == "ikphogdj" and self._target_state == LockState.UNLOCKED:
@@ -340,6 +336,47 @@ class TuyaBLELock(TuyaBLEEntity, LockEntity):
         self._commanded = True
         self._commanded_timer = datetime.now()
 
+
+    def _apply_raykube_commanded_state(self, state: str) -> None:
+        """Show the commanded state until the lock reports its real one.
+
+        The synthetic state DP is updated too: otherwise any unrelated
+        report arriving before DP47 (e.g. the record DP sent on connect)
+        would make update_device_state() restore the pre-command state.
+        """
+        self._device.datapoints._update_from_device(
+            self._mapping.dp_id,
+            time.time(),
+            0,
+            TuyaBLEDataPointType.DT_ENUM,
+            1 if state == LockState.UNLOCKED else 0,
+        )
+        self._current_state = state
+        self._commanded = False
+        self._isjammed = False
+        self._update_attrs()
+        self.async_write_ha_state()
+        self._schedule_state_refresh()
+
+    @callback
+    def _schedule_state_refresh(self) -> None:
+        """Request a status snapshot once the motor has settled."""
+        if self._unsub_state_refresh is not None:
+            self._unsub_state_refresh()
+        self._unsub_state_refresh = async_call_later(
+            self._hass, RAYKUBE_STATE_REFRESH_DELAY, self._async_refresh_state
+        )
+
+    async def _async_refresh_state(self, _now: datetime) -> None:
+        self._unsub_state_refresh = None
+        try:
+            await self._device.update()
+        except Exception:  # noqa: BLE001 - best effort, the next report fixes it
+            _LOGGER.debug(
+                "%s: state refresh after lock command failed",
+                self._device.address,
+                exc_info=True,
+            )
 
     def update_device_state(self):
         datapoint = self._device.datapoints[self._mapping.dp_id]
