@@ -87,6 +87,13 @@ class TuyaBLEConnectionInfo:
     last_frame_received_code: str | None = None
     last_frame_sent: float | None = None
     last_frame_sent_code: str | None = None
+    # Advertisements: whether the device changes what it broadcasts, e.g.
+    # after the lock is turned by hand (RSSI is ignored).
+    last_advertisement: float | None = None
+    last_advertisement_change: float | None = None
+    advertisement_changes: int = 0
+    advertisement_data: str | None = None
+    connection_mode: str | None = None
 
 
 class TuyaBLEDataPoint:
@@ -351,10 +358,42 @@ class TuyaBLEDevice:
 
     def set_ble_device_and_advertisement_data(
         self, ble_device: BLEDevice, advertisement_data: AdvertisementData
-    ) -> None:
-        """Set the ble device."""
+    ) -> bool:
+        """Set the ble device; True when the advertised data changed."""
         self._ble_device = ble_device
         self._advertisement_data = advertisement_data
+        fingerprint = self._advertisement_fingerprint(advertisement_data)
+        info = self._connection
+        info.last_advertisement = time.time()
+        changed = info.advertisement_data is not None and fingerprint != info.advertisement_data
+        if fingerprint != info.advertisement_data:
+            # The first advertisement only sets the baseline.
+            self._update_connection(
+                advertisement_data=fingerprint,
+                last_advertisement_change=info.last_advertisement if changed else info.last_advertisement_change,
+                advertisement_changes=info.advertisement_changes + (1 if changed else 0),
+            )
+        return changed
+
+    @staticmethod
+    def _advertisement_fingerprint(advertisement_data: AdvertisementData | None) -> str:
+        """Advertised service and manufacturer data as text, without RSSI."""
+        if advertisement_data is None:
+            return ""
+        parts = [
+            f"{uuid}={bytes(value).hex()}"
+            for uuid, value in sorted((advertisement_data.service_data or {}).items())
+        ]
+        parts += [
+            f"{company:04x}={bytes(value).hex()}"
+            for company, value in sorted((advertisement_data.manufacturer_data or {}).items())
+        ]
+        return " ".join(parts)
+
+    @property
+    def is_connected(self) -> bool:
+        """Connected and paired."""
+        return bool(self._client and self._client.is_connected and self._is_paired)
 
     async def initialize(self) -> None:
         _LOGGER.debug("%s: Initializing", self.address)

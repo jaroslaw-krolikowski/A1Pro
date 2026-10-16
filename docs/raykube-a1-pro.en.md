@@ -182,22 +182,29 @@ turned the thumb turn, used a key or unlocked from the Tuya app), HA sends a not
 HA (dashboard, automation, voice assistant) does not notify. HA tells them apart by the context of the
 state change: a change reported by the lock itself has no user or automation attached.
 
-> **Required: a permanent connection to the lock (24/7).** Without it the lock sleeps and HA only
-> connects for commands or refreshes, so it learns about a manual unlock up to about 5 minutes late,
-> or not at all. Step 1 turns it on.
+> **Required: a fast connection mode.** The lock sleeps between commands. In the default *Read every
+> 5 minutes* mode HA learns about a manual unlock up to about 5 minutes late. For notifications choose
+> *Permanent connection (24/7)* in step 1, or *On advertisement change* if your lock signals changes in
+> its advertisements.
 
 ### Setup
 
-1. **Turn on the permanent Bluetooth connection.**
+1. **Choose the connection mode.**
    *Settings → Devices & services → Tuya Local BLE* → **⋮** menu next to the lock (or the cog icon)
-   → **Options** / **Configure** → tick **Keep connected (24/7)** (*Stałe połączenie (24/7)*)
-   → **Submit**. The integration reloads by itself.
-   - A permanent connection uses more of the lock's battery. Keep an eye on the battery entity in the
-     first weeks.
-   - It works best with an ESPHome Bluetooth proxy near the door. With poor range the connection drops
-     and notifications may come late.
-   - The Tuya/Smart Life app cannot connect to the lock while HA holds the connection. Turn the option
-     off while you use the app.
+   → **Options** / **Configure** → **Connection mode** → **Submit**. The integration reloads by itself.
+
+   | Mode | A manual unlock shows up after | Lock battery |
+   |---|---|---|
+   | *Read every 5 minutes* (default) | up to ~5 min | medium: a connection about every 5 min |
+   | *On advertisement change* (experimental) | a few seconds, **if** the lock changes its advertisement | lowest: connects only after a change, plus every 30 min |
+   | *Permanent connection (24/7)* | a few seconds | highest: the lock's radio stays active |
+
+   - Whether your lock changes its advertisement when turned is checked with the test in
+     [Does the lock signal changes in its advertisements](#does-the-lock-signal-changes-in-its-advertisements).
+   - With *Permanent connection*, keep an eye on the battery entity in the first weeks. It works best with
+     an ESPHome Bluetooth proxy near the door; with poor range the connection drops.
+   - The Tuya/Smart Life app cannot connect to the lock while HA holds the connection. Choose another
+     mode while you use the app.
 2. **Install the Home Assistant app on your phone** and sign in to your HA.
    The phone shows up as a device of the *Mobile App* integration and HA gets an action
    `notify.mobile_app_<phone_name>`. Find the full name in *Developer tools → Actions* by typing
@@ -282,9 +289,24 @@ The state of the Bluetooth connection to the lock:
 | *Connecting* | HA is trying to connect; the *Connection attempts* attribute goes up |
 | *Error* | the last attempt failed; the reason is in the *Last error* attribute |
 
-Attributes: *Last connected*, *Last disconnected*, *Last error* and its time, *Connection attempts*,
-*Failed connections*, *Last frame received / sent* (time and type, e.g. `FUN_RECEIVE_DP_V4`),
-*Last report from the device* and RSSI.
+Attributes: *Connection mode*, *Last connected*, *Last disconnected*, *Last error* and its time,
+*Connection attempts*, *Failed connections*, *Last frame received / sent* (time and type,
+e.g. `FUN_RECEIVE_DP_V4`), *Last report from the device*, *Last advertisement change*,
+*Advertisement changes* and RSSI.
+
+#### Does the lock signal changes in its advertisements
+
+The lock keeps broadcasting a short Bluetooth packet, even while asleep. *Last advertisement change* and
+*Advertisement changes* tell when and how often the content of that packet changed (signal strength
+alone does not count). Test it standing at the door:
+
+1. Note *Advertisement changes* and wait a few minutes without touching the lock. If the number goes up
+   by itself, the lock changes its advertisement for no reason and *On advertisement change* will not help.
+2. Turn the thumb turn by hand. If *Last advertisement change* shows the current time within a few
+   seconds and the number goes up, the lock signals changes: choose *On advertisement change*.
+3. Repeat 2–3 times to rule out a coincidence.
+
+The full content of the last packet is in the *Download diagnostics* file (`advertisement_data`).
 
 Typical *Last error* values:
 - `device not found, not in range or poor RSSI`: the lock is out of range of the adapter or proxy;
@@ -393,7 +415,7 @@ Replace the entity ids (`lock.your_lock` etc.) with your own from the device pag
   range, it retries every 2 minutes, up to 3 times.
 - The battery lock sleeps between commands. HA connects on demand, so every change takes a few seconds.
   Settings are refreshed on every connection (snapshot), with **Refresh status**, or permanently with
-  *Keep connected (24/7)* in the integration options (an ESPHome BLE proxy is recommended then).
+  the *Permanent connection (24/7)* connection mode (an ESPHome BLE proxy is recommended then).
 - The Tuya/Smart Life app and HA cannot be connected to the lock at the same time.
 - After a lock/unlock command HA shows the target state right away and about 12 s later queries the lock
   and shows its real state. This helps when the lock was turned by hand just before.

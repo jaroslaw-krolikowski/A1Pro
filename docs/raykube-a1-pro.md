@@ -178,21 +178,29 @@ gałkę, użył klucza albo otworzył z aplikacji Tuya), HA wysyła powiadomieni
 automatyzacja, asystent głosowy) powiadomienia nie wysyła. HA rozpoznaje to po kontekście zmiany stanu:
 zmiana zgłoszona przez sam zamek nie ma przypisanego użytkownika ani automatyzacji.
 
-> **Wymagane: stałe połączenie z zamkiem (24/7).** Bez niego zamek śpi, a HA łączy się z nim tylko
-> przy komendzie albo odświeżeniu. Wtedy o ręcznym otwarciu dowiaduje się z opóźnieniem do ok. 5 minut
-> albo wcale. Włączenie opisuje krok 1.
+> **Wymagane: szybki tryb połączenia.** Zamek śpi między komendami. W domyślnym trybie *Odczyt co 5 minut*
+> HA dowiaduje się o ręcznym otwarciu z opóźnieniem do ok. 5 minut. Na powiadomienia wybierz w kroku 1
+> tryb *Stałe połączenie (24/7)* albo, jeśli Twój zamek sygnalizuje zmiany w rozgłaszaniu,
+> *Po zmianie rozgłaszania*.
 
 ### Konfiguracja
 
-1. **Włącz stałe połączenie Bluetooth.**
+1. **Wybierz tryb połączenia.**
    *Ustawienia → Urządzenia i usługi → Tuya Local BLE* → przy zamku menu **⋮** (albo ikona koła zębatego)
-   → **Opcje** / **Konfiguruj** → zaznacz **Stałe połączenie (24/7)** (*Keep connected (24/7)*)
-   → **Zatwierdź**. Integracja przeładuje się sama.
-   - Stałe połączenie zużywa więcej baterii zamka. Sprawdzaj encję baterii w pierwszych tygodniach.
-   - Najlepiej działa z ESPHome Bluetooth proxy blisko drzwi. Przy słabym zasięgu połączenie
-     będzie się zrywać i powiadomienia mogą przychodzić z opóźnieniem.
+   → **Opcje** / **Konfiguruj** → **Tryb połączenia** → **Zatwierdź**. Integracja przeładuje się sama.
+
+   | Tryb | Ręczne otwarcie widać po | Bateria zamka |
+   |---|---|---|
+   | *Odczyt co 5 minut* (domyślnie) | do ~5 min | średnio: połączenie mniej więcej co 5 min |
+   | *Po zmianie rozgłaszania* (eksperymentalne) | kilka sekund, **jeśli** zamek zmienia rozgłaszanie | najmniej: łączy się tylko po zmianie, plus co 30 min |
+   | *Stałe połączenie (24/7)* | kilka sekund | najwięcej: radio zamka stale aktywne |
+
+   - Czy Twój zamek zmienia rozgłaszanie po przekręceniu, sprawdzisz testem z sekcji
+     [Czy zamek sygnalizuje zmiany w rozgłaszaniu](#czy-zamek-sygnalizuje-zmiany-w-rozgłaszaniu).
+   - Przy *Stałym połączeniu* sprawdzaj encję baterii w pierwszych tygodniach. Najlepiej działa z ESPHome
+     Bluetooth proxy blisko drzwi; przy słabym zasięgu połączenie będzie się zrywać.
    - Aplikacja Tuya/Smart Life nie połączy się z zamkiem, dopóki HA trzyma połączenie.
-     Na czas korzystania z aplikacji wyłącz tę opcję.
+     Na czas korzystania z aplikacji wybierz inny tryb.
 2. **Zainstaluj aplikację Home Assistant na telefonie** i zaloguj się do swojego HA.
    Telefon pojawi się jako urządzenie integracji *Mobile App*, a w HA powstanie akcja
    `notify.mobile_app_<nazwa_telefonu>`. Pełną nazwę znajdziesz w *Narzędzia deweloperskie → Akcje*
@@ -276,9 +284,24 @@ Stan połączenia Bluetooth z zamkiem:
 | *Łączenie* | HA właśnie próbuje się połączyć; atrybut *Próby połączenia* rośnie |
 | *Błąd* | ostatnia próba się nie udała; przyczyna jest w atrybucie *Ostatni błąd* |
 
-Atrybuty: *Ostatnie połączenie*, *Ostatnie rozłączenie*, *Ostatni błąd* i jego czas, *Próby połączenia*,
-*Nieudane połączenia*, *Ostatnia odebrana / wysłana ramka* (czas i typ, np. `FUN_RECEIVE_DP_V4`),
-*Ostatni raport urządzenia* i RSSI.
+Atrybuty: *Tryb połączenia*, *Ostatnie połączenie*, *Ostatnie rozłączenie*, *Ostatni błąd* i jego czas,
+*Próby połączenia*, *Nieudane połączenia*, *Ostatnia odebrana / wysłana ramka* (czas i typ,
+np. `FUN_RECEIVE_DP_V4`), *Ostatni raport urządzenia*, *Ostatnia zmiana rozgłaszania*,
+*Zmiany rozgłaszania* i RSSI.
+
+#### Czy zamek sygnalizuje zmiany w rozgłaszaniu
+
+Zamek co chwilę rozgłasza krótki pakiet Bluetooth, nawet gdy śpi. Atrybuty *Ostatnia zmiana rozgłaszania*
+i *Zmiany rozgłaszania* mówią, kiedy i ile razy zmieniła się treść tego pakietu (sama siła sygnału się
+nie liczy). Test, stojąc przy drzwiach:
+
+1. Zapisz wartość *Zmiany rozgłaszania* i odczekaj kilka minut bez dotykania zamka. Jeśli liczba rośnie
+   sama z siebie, zamek zmienia rozgłaszanie bez powodu i tryb *Po zmianie rozgłaszania* nic nie da.
+2. Przekręć gałkę ręcznie. Jeśli w ciągu kilku sekund *Ostatnia zmiana rozgłaszania* pokaże bieżącą
+   godzinę, a liczba wzrośnie, zamek sygnalizuje zmiany: wybierz tryb *Po zmianie rozgłaszania*.
+3. Powtórz 2–3 razy, żeby wykluczyć przypadek.
+
+Pełna treść ostatniego pakietu jest w pliku *Pobierz diagnostykę* (`advertisement_data`).
 
 Typowe wartości *Ostatniego błędu*:
 - `device not found, not in range or poor RSSI`: zamek poza zasięgiem adaptera albo proxy;
@@ -386,7 +409,7 @@ Identyfikatory encji (`lock.twoj_zamek` itd.) podmień na swoje z ustawień urz�
   ponawia to co 2 minuty, maksymalnie 3 razy.
 - Zamek na baterie śpi między komendami. HA łączy się na żądanie, więc każda zmiana trwa kilka sekund.
   Stan ustawień odświeża się przy każdym połączeniu (snapshot), przyciskiem **Odśwież stan**
-  albo na stałe przy opcji *Stałe połączenie (24/7)* w opcjach integracji (wtedy lepiej użyć ESPHome BLE proxy).
+  albo na stałe w trybie połączenia *Stałe połączenie (24/7)* (wtedy lepiej użyć ESPHome BLE proxy).
 - Aplikacja Tuya/Smart Life i HA nie mogą być połączone z zamkiem jednocześnie.
 - Po komendzie zamknij/otwórz HA od razu pokazuje stan docelowy, a ok. 12 s później odpytuje zamek
   i pokazuje jego faktyczny stan. Przydaje się to, gdy zamek był chwilę wcześniej przekręcony ręcznie.

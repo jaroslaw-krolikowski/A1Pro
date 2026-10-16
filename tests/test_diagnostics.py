@@ -170,7 +170,7 @@ def test_download_diagnostics_is_redacted():
         )
         entry = SimpleNamespace(
             entry_id="e1", title="Raykube", data={"address": device.address},
-            options={"keep_connected": True, "local_key": LOCAL_KEY},
+            options={"keep_connected": True, "local_key": LOCAL_KEY},  # legacy option
         )
         hass.data["tuya_local_ble"] = {
             "e1": SimpleNamespace(device=device, coordinator=coordinator)
@@ -180,7 +180,7 @@ def test_download_diagnostics_is_redacted():
         for secret in (LOCAL_KEY, UUID, DEVICE_ID, UNLOCK_CHECK, "DC:23:51", b"\x01secret".hex()):
             assert secret not in dumped
         assert result["device"]["address"] == "**:**:**:D9:F4:94"
-        assert result["entry"]["keep_connected"] is True
+        assert result["entry"]["connection_mode"] == "permanent"
         assert result["device"]["ble_unlock_check_loaded"] is True
         rows = {row["id"]: row for row in result["datapoints"]}
         assert rows[47]["name"] == "dp_47_lock_motor_state" and rows[47]["source"] == "device"
@@ -192,3 +192,44 @@ def test_download_diagnostics_is_redacted():
         await hass.async_stop(force=True)
 
     asyncio.run(scenario())
+
+
+def advert(service: bytes, manufacturer: bytes, rssi: int):
+    return SimpleNamespace(
+        service_data={"0000fd50-0000-1000-8000-00805f9b34fb": service},
+        manufacturer_data={0x07D0: manufacturer},
+        rssi=rssi,
+    )
+
+
+def test_advertisement_changes_are_tracked_without_rssi():
+    device = make_device()
+    ble = SimpleNamespace(address=device.address, name="lock")
+    events = []
+    device.register_connection_callback(lambda: events.append(device.connection.advertisement_changes))
+
+    assert device.set_ble_device_and_advertisement_data(ble, advert(b"\x01", b"\xaa", -70)) is False
+    info = device.connection
+    assert info.advertisement_changes == 0 and info.last_advertisement_change is None  # baseline only
+    assert device.set_ble_device_and_advertisement_data(ble, advert(b"\x01", b"\xaa", -55)) is False  # RSSI only
+    assert device.set_ble_device_and_advertisement_data(ble, advert(b"\x01", b"\xab", -55)) is True
+    assert info.advertisement_changes == 1 and info.last_advertisement_change is not None
+    assert "07d0=ab" in info.advertisement_data
+    assert events == [0, 1]  # sensor updates only when the content changes
+
+
+def test_status_read_decision_per_connection_mode():
+    from custom_components.tuya_local_ble import status_read_due
+    from custom_components.tuya_local_ble.const import get_connection_mode
+
+    assert status_read_due("periodic", False, 301) and not status_read_due("periodic", True, 100)
+    assert status_read_due("advertisement_change", True, 11)
+    assert not status_read_due("advertisement_change", True, 5)  # debounced
+    assert not status_read_due("advertisement_change", False, 600)
+    assert status_read_due("advertisement_change", False, 1801)  # slow fallback
+    assert not status_read_due("permanent", True, 10_000)
+
+    assert get_connection_mode({}) == "periodic"
+    assert get_connection_mode({"keep_connected": True}) == "permanent"
+    assert get_connection_mode({"keep_connected": True, "connection_mode": "advertisement_change"}) == "advertisement_change"
+    assert get_connection_mode({"connection_mode": "bogus"}) == "periodic"

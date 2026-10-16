@@ -17,10 +17,11 @@ blueprint:
     not notify.
 
 
-    Wymaga stałego połączenia BLE z zamkiem / Needs a permanent BLE
-    connection: Tuya Local BLE > Konfiguruj / Configure > "Stałe połączenie
-    (24/7)" / "Keep connected (24/7)", najlepiej przez / ideally through an
-    ESPHome BLE proxy. Konfiguracja telefonu / phone setup:
+    Wymaga szybkiego trybu połączenia / Needs a fast connection mode:
+    Tuya Local BLE > Konfiguruj / Configure > Tryb połączenia / Connection
+    mode > "Stałe połączenie (24/7)" / "Permanent connection (24/7)" albo /
+    or "Po zmianie rozgłaszania" / "On advertisement change". Konfiguracja
+    telefonu / phone setup:
     docs/raykube-a1-pro.md (PL), docs/raykube-a1-pro.en.md (EN).
   domain: automation
   source_url: https://github.com/jaroslaw-krolikowski/A1Pro/blob/master/blueprints/automation/a1pro/lock_arming_alarm.yaml

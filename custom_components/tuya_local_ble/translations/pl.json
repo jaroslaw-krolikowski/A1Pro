@@ -21,12 +21,12 @@
     "step": {
       "init": {
         "title": "Opcje Tuya BLE",
-        "description": "Sposób łączenia z urządzeniem. Stałe połączenie przydaje się głównie przy zamkach na baterie (np. Raykube): HA od razu widzi otwarcie gałką lub kluczem, czego wymaga tryb uzbrojenia. Domyślnie wyłączone.",
+        "description": "Jak Home Assistant łączy się z zamkiem na baterie, który śpi między komendami (Raykube A1 Pro / A1 Ultra). Inne urządzenia ignorują to ustawienie.",
         "data": {
-          "keep_connected": "Stałe połączenie (24/7)"
+          "connection_mode": "Tryb połączenia"
         },
         "data_description": {
-          "keep_connected": "Włączone: HA utrzymuje stałe połączenie Bluetooth z urządzeniem i od razu dostaje zmiany stanu. Zużywa więcej baterii, a aplikacja Tuya nie połączy się w tym czasie z urządzeniem. Najlepiej działa z ESPHome Bluetooth proxy. Wyłączone: HA łączy się tylko przy komendach i odświeżeniu."
+          "connection_mode": "Powiadomienia trybu uzbrojenia wymagają, żeby HA szybko dowiadywał się o ręcznym przekręceniu: wybierz „Stałe połączenie” albo „Po zmianie rozgłaszania”, jeśli zamek sygnalizuje zmiany w rozgłaszaniu (zob. sensor Połączenie). Aplikacja Tuya nie połączy się z zamkiem, dopóki HA trzyma połączenie."
         }
       }
     }
@@ -153,6 +153,20 @@
           },
           "rssi": {
             "name": "RSSI"
+          },
+          "connection_mode": {
+            "name": "Tryb połączenia",
+            "state": {
+              "periodic": "Co 5 minut",
+              "advertisement_change": "Po zmianie rozgłaszania",
+              "permanent": "Stałe połączenie"
+            }
+          },
+          "last_advertisement_change": {
+            "name": "Ostatnia zmiana rozgłaszania"
+          },
+          "advertisement_changes": {
+            "name": "Zmiany rozgłaszania"
           }
         }
       }
@@ -168,6 +182,15 @@
     "lock": {
       "manual_lock": {
         "name": "Zamek"
+      }
+    }
+  },
+  "selector": {
+    "connection_mode": {
+      "options": {
+        "periodic": "Odczyt co 5 minut (domyślnie): HA łączy się i odczytuje stan najwyżej co 5 minut; ręczne przekręcenie widać z opóźnieniem do 5 minut",
+        "advertisement_change": "Po zmianie rozgłaszania (eksperymentalne): HA odczytuje stan, gdy tylko zamek zmieni to, co rozgłasza, oraz co 30 minut; najszybciej przy najmniejszym zużyciu baterii, jeśli zamek sygnalizuje zmiany",
+        "permanent": "Stałe połączenie (24/7): HA trzyma połączenie otwarte i łączy się ponownie w ciągu minuty; zmiany docierają w kilka sekund, największe zużycie baterii"
       }
     }
   }

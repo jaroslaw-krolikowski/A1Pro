@@ -8,7 +8,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 
-from .const import CONF_KEEP_CONNECTED, DOMAIN
+from .const import DOMAIN, get_connection_mode
 from .devices import TuyaBLEData
 from .diagnostics_data import change_rows, connection_data, datapoint_rows
 from .raykube import get_raykube_config
@@ -48,7 +48,7 @@ async def async_get_config_entry_diagnostics(
                 TO_REDACT,
             ),
             "options": async_redact_data(dict(entry.options), TO_REDACT),
-            "keep_connected": bool(entry.options.get(CONF_KEEP_CONNECTED, False)),
+            "connection_mode": get_connection_mode(entry.options),
         },
     }
     if data is None:
@@ -70,7 +70,7 @@ async def async_get_config_entry_diagnostics(
         "credentials_loaded": bool(device.local_key),
         "ble_unlock_check_loaded": bool(device.ble_unlock_check),
     }
-    result["connection"] = connection_data(device)
+    result["connection"] = connection_data(device, full=True)
     if config is not None:
         result["raykube"] = {
             "dps": config.dps,

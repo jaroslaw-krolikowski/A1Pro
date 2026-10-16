@@ -23,9 +23,18 @@ from homeassistant.core import callback
 
 from .tuya_ble import SERVICE_UUID, SERVICE_UUID_FD50, TuyaBLEDeviceCredentials
 
+from homeassistant.helpers.selector import (
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
+)
+
 from .const import (
+    CONF_CONNECTION_MODE,
     CONF_KEEP_CONNECTED,
+    CONNECTION_MODES,
     DOMAIN,
+    get_connection_mode,
 )
 from .devices import TuyaBLEData, get_device_readable_name
 from .keyman import HASSTuyaBLEDeviceManager
@@ -163,21 +172,24 @@ class TuyaBLEOptionsFlow(OptionsFlow):
         if user_input is not None:
             # Preserve existing credential/options keys written at setup time.
             options = dict(self.config_entry.options)
-            options[CONF_KEEP_CONNECTED] = bool(
-                user_input.get(CONF_KEEP_CONNECTED, False)
-            )
+            options.pop(CONF_KEEP_CONNECTED, None)  # replaced by the mode
+            options[CONF_CONNECTION_MODE] = user_input[CONF_CONNECTION_MODE]
             return self.async_create_entry(title="", data=options)
 
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
                 {
-                    vol.Optional(
-                        CONF_KEEP_CONNECTED,
-                        default=bool(
-                            self.config_entry.options.get(CONF_KEEP_CONNECTED, False)
-                        ),
-                    ): bool,
+                    vol.Required(
+                        CONF_CONNECTION_MODE,
+                        default=get_connection_mode(self.config_entry.options),
+                    ): SelectSelector(
+                        SelectSelectorConfig(
+                            options=CONNECTION_MODES,
+                            mode=SelectSelectorMode.LIST,
+                            translation_key=CONF_CONNECTION_MODE,
+                        )
+                    ),
                 }
             ),
         )

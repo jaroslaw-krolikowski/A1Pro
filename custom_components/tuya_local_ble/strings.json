@@ -20,13 +20,22 @@
     "step": {
       "init": {
         "title": "Tuya BLE options",
-        "description": "Optional connection behavior. Keep connected is mainly useful for battery locks (e.g. Raykube) when you want live reverse sync; default is off.",
+        "description": "How Home Assistant talks to a battery lock that sleeps between commands (Raykube A1 Pro / A1 Ultra). Other devices ignore this setting.",
         "data": {
-          "keep_connected": "Keep connected (24/7)"
+          "connection_mode": "Connection mode"
         },
         "data_description": {
-          "keep_connected": "When enabled, maintain a persistent BLE session with periodic keepalive (like Gimdow). When disabled, connect on demand and use advertisement refresh. Prefer ESPHome BLE proxies if enabling this."
+          "connection_mode": "Arming-mode notifications need HA to learn about a manual turn quickly: choose \"Permanent connection\", or \"On advertisement change\" if the lock signals changes in its advertisements (see the Connection sensor). The Tuya app cannot connect while HA holds the connection."
         }
+      }
+    }
+  },
+  "selector": {
+    "connection_mode": {
+      "options": {
+        "periodic": "Read every 5 minutes (default): HA connects and reads the state at most every 5 minutes; a manual turn shows up up to 5 minutes late",
+        "advertisement_change": "On advertisement change (experimental): HA reads the state as soon as the lock changes what it broadcasts, plus every 30 minutes; fastest with the least battery use, if the lock signals changes",
+        "permanent": "Permanent connection (24/7): HA keeps the connection open and reconnects within a minute; changes arrive in seconds, uses the most battery"
       }
     }
   },

@@ -123,10 +123,12 @@ def _text(value: Any) -> str:
     return str(value)
 
 
-def connection_data(device: TuyaBLEDevice) -> dict[str, Any]:
+def connection_data(device: TuyaBLEDevice, full: bool = False) -> dict[str, Any]:
+    """Connection state; full adds per-advertisement details (download only)."""
     info = device.connection
-    return {
+    data = {
         "state": info.state,
+        "connection_mode": info.connection_mode,
         "last_connected": iso_time(info.last_connected),
         "last_disconnected": iso_time(info.last_disconnected),
         "last_error": info.last_error,
@@ -138,5 +140,12 @@ def connection_data(device: TuyaBLEDevice) -> dict[str, Any]:
         "last_frame_sent": iso_time(info.last_frame_sent),
         "last_frame_sent_code": info.last_frame_sent_code,
         "last_device_report": iso_time(device.datapoints.last_device_report),
+        "last_advertisement_change": iso_time(info.last_advertisement_change),
+        "advertisement_changes": info.advertisement_changes,
         "rssi": device.rssi,
     }
+    if full:
+        # Changes with every advertisement: kept out of the sensor.
+        data["last_advertisement"] = iso_time(info.last_advertisement)
+        data["advertisement_data"] = info.advertisement_data
+    return data
