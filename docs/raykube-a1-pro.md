@@ -7,12 +7,12 @@ Ten fork [ShonP40/Tuya-BLE](https://github.com/ShonP40/Tuya-BLE) dodaje do zamk�
 
 | Encja HA (nazwa PL / EN) | Funkcja | DP | Typ | Pewność |
 |---|---|---|---|---|
-| lock: Zamek / Lock Control | otwieranie / zamykanie | 71 (otwarcie), 46 (zamknięcie) | raw / bool | potwierdzone fizycznie (upstream) |
+| lock: Zamek / Lock Control | otwieranie / zamykanie; stan z DP47 (`false` = zamknięty) | 71 (otwarcie), 46 (zamknięcie), 47 (stan) | raw / bool | potwierdzone fizycznie (upstream); stan DP47 potwierdzony na `hc7n0urm` |
 | select: Głośność zamka / Lock Volume | głośność: `hc7n0urm` mute / normal, `rlyxv7pe` mute / low / normal / high | 31 | enum | model DP z chmury Tuya |
 | switch: Wyciszenie / Mute | wycisz / odcisz | 31 | enum | j.w. Odciszenie przywraca ostatni poziom |
 | switch: Automatyczne zamykanie / Auto Lock | auto-zamykanie po otwarciu | 33 | bool | DP z chmury Tuya i snapshotu BLE |
 | number: Czas automatycznego zamknięcia / Auto lock delay | opóźnienie auto-zamknięcia (s) | 36 | value | DP z chmury Tuya i snapshotu BLE |
-| button: Kalibracja / Calibrate | kalibracja zamka | 68 = `function1` | enum | wg profilu tuya-local (`Recalibrate`) |
+| button: Kalibracja / Calibrate | kalibracja zamka | 68 = `function1` | enum | potwierdzone: kalibracja w aplikacji raportuje DP68 = `function1` (`hc7n0urm`) |
 | switch: Tryb uzbrojenia / Arming mode | tryb uzbrojenia (alarm przy ręcznym przekręceniu) | **do ustalenia** | bool | tworzony dopiero po wpisaniu DP, sprawdź niżej |
 | button: Odśwież stan / Refresh status | łączy się z zamkiem i pobiera pełny stan | – | – | – |
 | sensor: Datapointy / Datapoints | wszystkie DP odebrane z zamka (atrybuty) | – | – | diagnostyka |
