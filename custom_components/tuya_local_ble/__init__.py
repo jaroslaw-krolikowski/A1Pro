@@ -132,7 +132,7 @@ async def _async_set_datapoint(hass: HomeAssistant, call: ServiceCall) -> None:
         None,
     )
     if data is None:
-        raise HomeAssistantError("Device is not a loaded Tuya Local BLE device")
+        raise HomeAssistantError("Device is not a loaded Raykube A1 Pro (Tuya BLE) device")
 
     dp_id: int = call.data["dp_id"]
     dp_type = DATAPOINT_TYPES[call.data["type"]]

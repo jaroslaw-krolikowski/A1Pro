@@ -38,7 +38,7 @@
       "fields": {
         "device_id": {
           "name": "Urządzenie",
-          "description": "Urządzenie Tuya Local BLE."
+          "description": "Urządzenie Raykube A1 Pro (Tuya BLE)."
         },
         "dp_id": {
           "name": "Numer DP",

@@ -47,7 +47,7 @@
       "fields": {
         "device_id": {
           "name": "Device",
-          "description": "Tuya Local BLE device."
+          "description": "Raykube A1 Pro (Tuya BLE) device."
         },
         "dp_id": {
           "name": "DP id",

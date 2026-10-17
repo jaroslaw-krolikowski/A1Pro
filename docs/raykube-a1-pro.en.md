@@ -41,7 +41,7 @@ This fork sends it as `enum`.
    If the original is installed, remove it from HACS (keep the integration entry and `devices.json`) and install the fork.
 3. Fill in `config/tuya_local_ble/devices.json` (below) and restart HA.
 4. The lock shows up as discovered in *Settings → Devices & services*. You can also add it manually:
-   *Add integration → Tuya Local BLE* and pick the lock from the list.
+   *Add integration → Raykube A1 Pro (Tuya BLE)* and pick the lock from the list.
 
 If adding it says that HA does not see any Tuya BLE device, Bluetooth in HA does not see the lock.
 The usual causes:
@@ -190,7 +190,7 @@ state change: a change reported by the lock itself has no user or automation att
 ### Setup
 
 1. **Choose the connection mode.**
-   *Settings → Devices & services → Tuya Local BLE* → **⋮** menu next to the lock (or the cog icon)
+   *Settings → Devices & services → Raykube A1 Pro (Tuya BLE)* → **⋮** menu next to the lock (or the cog icon)
    → **Options** / **Configure** → **Connection mode** → **Submit**. The integration reloads by itself.
 
    | Mode | A manual unlock shows up after | Lock battery |
@@ -275,7 +275,7 @@ state change: a change reported by the lock itself has no user or automation att
 
 ## Diagnostics
 
-The device page (*Settings → Devices & services → Tuya Local BLE → the lock*) has two sensors in its
+The device page (*Settings → Devices & services → Raykube A1 Pro (Tuya BLE) → the lock*) has two sensors in its
 *Diagnostic* section and a **Download diagnostics** button in the **⋮** menu.
 
 ### "Connection" sensor
@@ -343,7 +343,7 @@ the last 3 bytes of the MAC address are kept. The file is safe to attach to a bu
 3. In the *Datapoints* sensor check that *Last report* is fresh and look at `dp_47_lock_motor_state`:
    `false` means locked, `true` unlocked.
 
-The debug log has every frame: *Tuya Local BLE → ⋮ → Enable debug logging*.
+The debug log has every frame: *Raykube A1 Pro (Tuya BLE) → ⋮ → Enable debug logging*.
 Look for lines like `Received FD50 V4 datapoint update, id: 47, …, value: False`.
 
 ## DP change history
