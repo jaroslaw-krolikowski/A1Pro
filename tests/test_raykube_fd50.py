@@ -44,7 +44,7 @@ def make_device(product_id: str = "hc7n0urm") -> TuyaBLEDevice:
     device = TuyaBLEDevice(None, SimpleNamespace(address="AA:BB:CC:DD:EE:FF", name="lock"))
     device._device_info = TuyaBLEDeviceCredentials(
         "uuid", "localkey12345678", "devid", "jtmspro", product_id,
-        "Raykube", "A1 Pro", "Smart lock", UNLOCK_CHECK,
+        "Raykube", "A1 Ultra", "Smart lock", UNLOCK_CHECK,
         None,
     )
     return device

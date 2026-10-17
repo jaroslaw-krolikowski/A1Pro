@@ -18,8 +18,8 @@ CONF_DEVICE_NAME: Final = "device_name"
 CONF_PRODUCT_MODEL: Final = "product_model"
 CONF_PRODUCT_NAME: Final = "product_name"
 CONF_BLE_UNLOCK_CHECK: Final = "ble_unlock_check"
-# Optional devices.json block with Raykube A1 Pro overrides (DP ids, volume
-# levels, auto-lock range). See docs/raykube-a1-pro.md.
+# Optional devices.json block with Raykube A1 Ultra overrides (DP ids, volume
+# levels, auto-lock range). See docs/raykube-a1-ultra.md.
 CONF_RAYKUBE: Final = "raykube"
 # Legacy boolean option, read as CONNECTION_MODE_PERMANENT when set.
 CONF_KEEP_CONNECTED: Final = "keep_connected"

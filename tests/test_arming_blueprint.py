@@ -1,4 +1,4 @@
-"""Run blueprints/automation/a1pro/lock_arming_alarm.yaml in a real HA core.
+"""Run blueprints/automation/a1ultra/lock_arming_alarm.yaml in a real HA core.
 
 Skipped when homeassistant is not installed.
 """
@@ -27,7 +27,7 @@ from homeassistant.helpers import (  # noqa: E402
 from homeassistant.setup import async_setup_component  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
-BLUEPRINT = "a1pro/lock_arming_alarm.yaml"
+BLUEPRINT = "a1ultra/lock_arming_alarm.yaml"
 LOCK = "lock.drzwi"
 ARMED = "input_boolean.zamek_uzbrojony"
 
@@ -51,7 +51,7 @@ async def start_hass(config_dir: Path) -> tuple[HomeAssistant, list]:
     await hass.async_start()
 
     calls: list[str] = []
-    hass.bus.async_listen("a1pro_notify", lambda event: calls.append("notify"))
+    hass.bus.async_listen("a1ultra_notify", lambda event: calls.append("notify"))
     # Any lock or switch service call would be a state change on the lock.
     for domain, service in (("lock", "lock"), ("lock", "unlock"), ("switch", "turn_on"), ("switch", "turn_off")):
         hass.services.async_register(
@@ -72,7 +72,7 @@ async def start_hass(config_dir: Path) -> tuple[HomeAssistant, list]:
                     "input": {
                         "lock_entity": LOCK,
                         "arming_entity": ARMED,
-                        "notify_actions": [{"event": "a1pro_notify"}],
+                        "notify_actions": [{"event": "a1ultra_notify"}],
                     },
                 }
             }

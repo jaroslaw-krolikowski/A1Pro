@@ -1,6 +1,6 @@
-# Raykube A1 Ultra / A1 Pro Max TuyaOS FD50 lock
+# Raykube A1 Ultra TuyaOS FD50 lock
 
-Adds experimental local BLE support for Raykube A1 Ultra / A1 Pro Max locks using TuyaOS FD50 BLE service.
+Adds experimental local BLE support for Raykube A1 Ultra locks using TuyaOS FD50 BLE service.
 
 ## Tested device
 
