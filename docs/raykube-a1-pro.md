@@ -41,7 +41,7 @@ Ten fork wysyła ją jako `enum`.
    Jeśli oryginał jest zainstalowany, usuń go z HACS (zostaw wpis integracji i `devices.json`) i zainstaluj fork.
 3. Uzupełnij `config/tuya_local_ble/devices.json` (niżej) i zrestartuj HA.
 4. Zamek pojawi się jako wykryty w *Ustawienia → Urządzenia i usługi*. Możesz go też dodać ręcznie:
-   *Dodaj integrację → Tuya Local BLE* i wybrać zamek z listy.
+   *Dodaj integrację → Raykube A1 Pro (Tuya BLE)* i wybrać zamek z listy.
 
 Jeśli przy dodawaniu pojawia się komunikat, że HA nie widzi żadnego urządzenia Tuya BLE, to Bluetooth
 w HA nie widzi zamka. Najczęstsze przyczyny:
@@ -186,7 +186,7 @@ zmiana zgłoszona przez sam zamek nie ma przypisanego użytkownika ani automatyz
 ### Konfiguracja
 
 1. **Wybierz tryb połączenia.**
-   *Ustawienia → Urządzenia i usługi → Tuya Local BLE* → przy zamku menu **⋮** (albo ikona koła zębatego)
+   *Ustawienia → Urządzenia i usługi → Raykube A1 Pro (Tuya BLE)* → przy zamku menu **⋮** (albo ikona koła zębatego)
    → **Opcje** / **Konfiguruj** → **Tryb połączenia** → **Zatwierdź**. Integracja przeładuje się sama.
 
    | Tryb | Ręczne otwarcie widać po | Bateria zamka |
@@ -270,7 +270,7 @@ zmiana zgłoszona przez sam zamek nie ma przypisanego użytkownika ani automatyz
 
 ## Diagnostyka
 
-Na stronie urządzenia (*Ustawienia → Urządzenia i usługi → Tuya Local BLE → zamek*) w sekcji
+Na stronie urządzenia (*Ustawienia → Urządzenia i usługi → Raykube A1 Pro (Tuya BLE) → zamek*) w sekcji
 *Diagnostyka* są dwa sensory oraz przycisk **Pobierz diagnostykę** w menu **⋮**.
 
 ### Sensor „Połączenie”
@@ -337,7 +337,7 @@ a z adresu MAC zostają tylko ostatnie 3 bajty. Plik można bezpiecznie dołącz
 3. W sensorze *Datapointy* sprawdź *Ostatni raport* (czy jest świeży) i `dp_47_lock_motor_state`:
    `false` oznacza zamknięty, `true` otwarty.
 
-Szczegółowy zapis ramek daje log debug: *Tuya Local BLE → ⋮ → Włącz rejestrowanie debugowania*.
+Szczegółowy zapis ramek daje log debug: *Raykube A1 Pro (Tuya BLE) → ⋮ → Włącz rejestrowanie debugowania*.
 Szukaj linii `Received FD50 V4 datapoint update, id: 47, …, value: False`.
 
 ## Historia zmian DP

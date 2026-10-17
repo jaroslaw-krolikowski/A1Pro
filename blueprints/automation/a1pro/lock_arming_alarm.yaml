@@ -18,7 +18,7 @@ blueprint:
 
 
     Wymaga szybkiego trybu połączenia / Needs a fast connection mode:
-    Tuya Local BLE > Konfiguruj / Configure > Tryb połączenia / Connection
+    Raykube A1 Pro (Tuya BLE) > Konfiguruj / Configure > Tryb połączenia / Connection
     mode > "Stałe połączenie (24/7)" / "Permanent connection (24/7)" albo /
     or "Po zmianie rozgłaszania" / "On advertisement change". Konfiguracja
     telefonu / phone setup:

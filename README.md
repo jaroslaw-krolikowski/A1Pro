@@ -1,4 +1,6 @@
-# Tuya Local BLE: fork for Raykube A1 Pro
+# Raykube A1 Pro (Tuya BLE)
+
+Autor / Author: **Jarosław Królikowski** ([@jaroslaw-krolikowski](https://github.com/jaroslaw-krolikowski))
 
 [🇵🇱 Polski](#polski) · [🇬🇧 English](#english)
 
@@ -66,6 +68,16 @@ pytest tests   # tests that need HA run when homeassistant is installed
 node tests/card/test_card.mjs   # card test in a browser (playwright + chromium)
 ```
 
+## Autorzy / Credits
+
+- **Jarosław Królikowski**: integracja Raykube A1 Pro: ustawienia zamka, karta, tryb uzbrojenia,
+  diagnostyka, tryby połączenia, eksport z Tuya / the Raykube A1 Pro integration: lock settings, card,
+  arming mode, diagnostics, connection modes, Tuya export.
+- Bazuje na / based on [ShonP40/Tuya-BLE](https://github.com/ShonP40/Tuya-BLE) (Shon), które rozwija
+  [PlusPlus-ua/ha_tuya_ble](https://github.com/PlusPlus-ua/ha_tuya_ble): protokół Tuya BLE i obsługa innych
+  urządzeń / the Tuya BLE protocol layer and the other devices.
+
 ## Licencja / License
 
-MIT, like upstream (see [LICENSE](LICENSE)).
+MIT (zob. / see [LICENSE](LICENSE)). Licencja wymaga zachowania informacji o prawach autorskich upstreamu
+obok Twoich / the license requires keeping the upstream copyright notice next to yours.
