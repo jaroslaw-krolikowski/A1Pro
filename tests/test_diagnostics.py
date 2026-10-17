@@ -189,6 +189,18 @@ def test_download_diagnostics_is_redacted():
         assert result["connection"]["state"] == "disconnected"
         assert result["recent_changes"][0]["dp"] == "dp_71_ble_unlock_check"
         assert result["recent_changes"][0]["new"] == "**REDACTED**"
+        assert result["entry"]["options"].get("address") is None
+        assert result["lock_state"] == {
+            "value": "unlocked", "source": "device",
+            "updated": result["lock_state"]["updated"],
+        }
+        assert result["commands"] == {"pending": None, "last_calibration": None}
+
+        # The full MAC in the options (17.10 file) is masked as well.
+        entry.options = {"address": device.address, "connection_mode": "periodic"}
+        result = await diagnostics.async_get_config_entry_diagnostics(hass, entry)
+        assert result["entry"]["options"]["address"] == "**:**:**:D9:F4:94"
+        assert "DC:23:51" not in json.dumps(result)
         await hass.async_stop(force=True)
 
     asyncio.run(scenario())

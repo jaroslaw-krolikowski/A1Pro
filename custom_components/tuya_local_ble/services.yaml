@@ -29,3 +29,8 @@ set_datapoint:
       example: "true"
       selector:
         text:
+calibrate:
+  target:
+    entity:
+      integration: tuya_local_ble
+      domain: lock

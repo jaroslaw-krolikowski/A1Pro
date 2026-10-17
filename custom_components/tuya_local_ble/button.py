@@ -16,6 +16,7 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
+from .commands import async_calibrate
 from .const import DOMAIN
 from .devices import TuyaBLEData, TuyaBLEEntity, TuyaBLEProductInfo
 from .raykube import RaykubeConfig, get_raykube_config
@@ -170,7 +171,11 @@ class TuyaBLEButton(TuyaBLEEntity, ButtonEntity):
 
 
 class TuyaBLERaykubeCalibrateButton(TuyaBLEEntity, ButtonEntity):
-    """Start lock calibration (special_function = function1)."""
+    """Start lock calibration (special_function = function1).
+
+    Goes through the lock's command guard: once per 2 minutes, never while
+    another command is on its way, so repeated presses cannot queue up.
+    """
 
     def __init__(
         self,
@@ -200,11 +205,7 @@ class TuyaBLERaykubeCalibrateButton(TuyaBLEEntity, ButtonEntity):
         return self._config.sleepy or super().available
 
     async def async_press(self) -> None:
-        value = self._config.calibrate_value
-        datapoint = self._device.datapoints.get_or_create(
-            self._dp_id, TuyaBLEDataPointType.DT_ENUM, value
-        )
-        await datapoint.set_value(value)
+        await async_calibrate(self._device, self._dp_id, self._config.calibrate_value)
 
 
 class TuyaBLERaykubeRefreshButton(TuyaBLEEntity, ButtonEntity):
