@@ -1,6 +1,6 @@
-# Raykube A1 Pro / A1 Pro Max / A1 Ultra w Home Assistant (lokalnie po BLE)
+# Raykube A1 Ultra w Home Assistant (lokalnie po BLE)
 
-🇬🇧 English version: [raykube-a1-pro.en.md](raykube-a1-pro.en.md)
+🇬🇧 English version: [raykube-a1-ultra.en.md](raykube-a1-ultra.en.md)
 
 Ten fork [ShonP40/Tuya-BLE](https://github.com/ShonP40/Tuya-BLE) dodaje do zamków Raykube
 (`jtmspro`, `hc7n0urm` i `rlyxv7pe`) pełny zestaw ustawień w Home Assistant.
@@ -35,13 +35,13 @@ Ten fork wysyła ją jako `enum`.
 
 ## Instalacja
 
-1. HACS → Integrations → menu ⋮ → *Custom repositories* → `https://github.com/jaroslaw-krolikowski/A1Pro`, kategoria *Integration*.
+1. HACS → Integrations → menu ⋮ → *Custom repositories* → `https://github.com/jaroslaw-krolikowski/raykube-a1-ultra-integration`, kategoria *Integration*.
    Albo ręcznie: skopiuj `custom_components/tuya_local_ble` do `config/custom_components/`.
 2. Fork ma tę samą domenę (`tuya_local_ble`) co ShonP40/Tuya-BLE, więc **zastępuje** oryginał.
    Jeśli oryginał jest zainstalowany, usuń go z HACS (zostaw wpis integracji i `devices.json`) i zainstaluj fork.
 3. Uzupełnij `config/tuya_local_ble/devices.json` (niżej) i zrestartuj HA.
 4. Zamek pojawi się jako wykryty w *Ustawienia → Urządzenia i usługi*. Możesz go też dodać ręcznie:
-   *Dodaj integrację → Raykube A1 Pro (Tuya BLE)* i wybrać zamek z listy.
+   *Dodaj integrację → Raykube A1 Ultra (Tuya BLE)* i wybrać zamek z listy.
 
 Jeśli przy dodawaniu pojawia się komunikat, że HA nie widzi żadnego urządzenia Tuya BLE, to Bluetooth
 w HA nie widzi zamka. Najczęstsze przyczyny:
@@ -65,8 +65,8 @@ sprawdzenie adresu MAC w pliku.
     "device_id": "<device_id>",
     "category": "jtmspro",
     "product_id": "hc7n0urm",
-    "device_name": "Raykube A1 Pro",
-    "product_model": "A1 Pro",
+    "device_name": "Raykube A1 Ultra",
+    "product_model": "A1 Ultra",
     "product_name": "Smart lock",
     "ble_unlock_check": "<base64 z Tuya Cloud>",
     "raykube": {
@@ -212,7 +212,7 @@ zmiana zgłoszona przez sam zamek nie ma przypisanego użytkownika ani automatyz
 ### Konfiguracja
 
 1. **Wybierz tryb połączenia.**
-   *Ustawienia → Urządzenia i usługi → Raykube A1 Pro (Tuya BLE)* → przy zamku menu **⋮** (albo ikona koła zębatego)
+   *Ustawienia → Urządzenia i usługi → Raykube A1 Ultra (Tuya BLE)* → przy zamku menu **⋮** (albo ikona koła zębatego)
    → **Opcje** / **Konfiguruj** → **Tryb połączenia** → **Zatwierdź**. Integracja przeładuje się sama.
 
    | Tryb | Ręczne otwarcie widać po | Bateria zamka |
@@ -247,8 +247,8 @@ zmiana zgłoszona przez sam zamek nie ma przypisanego użytkownika ani automatyz
    np. „Zamek uzbrojony” (`input_boolean.zamek_uzbrojony`). To jest włącznik trybu uzbrojenia.
    Możesz go dodać do karty *Raykube Lock* (`arming_entity`), na dashboard albo włączać automatyzacją.
 5. **Zaimportuj blueprint:** *Ustawienia → Automatyzacje i sceny → Blueprinty → Importuj blueprint* i wklej
-   `https://github.com/jaroslaw-krolikowski/A1Pro/blob/master/blueprints/automation/a1pro/lock_arming_alarm.yaml`.
-   Możesz też skopiować plik do `config/blueprints/automation/a1pro/`.
+   `https://github.com/jaroslaw-krolikowski/raykube-a1-ultra-integration/blob/master/blueprints/automation/a1ultra/lock_arming_alarm.yaml`.
+   Możesz też skopiować plik do `config/blueprints/automation/a1ultra/`.
 6. **Utwórz automatyzację z blueprintu:** wybierz zamek i pomocnika. W polu **Powiadomienie** przełącz
    się na tryb YAML (menu **⋮ → Edytuj w YAML**) i wklej akcję dla swojego telefonu.
    `mobile_app_twoj_telefon` zamień na nazwę z kroku 2. Po stuknięciu w powiadomienie otworzy się
@@ -319,7 +319,7 @@ HA pokazał „zamknięte”, chociaż rygiel się nie ruszył, a kalibracje wyk
 
 ## Diagnostyka
 
-Na stronie urządzenia (*Ustawienia → Urządzenia i usługi → Raykube A1 Pro (Tuya BLE) → zamek*) w sekcji
+Na stronie urządzenia (*Ustawienia → Urządzenia i usługi → Raykube A1 Ultra (Tuya BLE) → zamek*) w sekcji
 *Diagnostyka* są dwa sensory oraz przycisk **Pobierz diagnostykę** w menu **⋮**.
 
 ### Sensor „Połączenie”
@@ -386,7 +386,7 @@ a z adresu MAC zostają tylko ostatnie 3 bajty. Plik można bezpiecznie dołącz
 3. W sensorze *Datapointy* sprawdź *Ostatni raport* (czy jest świeży) i `dp_47_lock_motor_state`:
    `false` oznacza zamknięty, `true` otwarty.
 
-Szczegółowy zapis ramek daje log debug: *Raykube A1 Pro (Tuya BLE) → ⋮ → Włącz rejestrowanie debugowania*.
+Szczegółowy zapis ramek daje log debug: *Raykube A1 Ultra (Tuya BLE) → ⋮ → Włącz rejestrowanie debugowania*.
 Szukaj linii `Received FD50 V4 datapoint update, id: 47, …, value: False`.
 
 ## Historia zmian DP

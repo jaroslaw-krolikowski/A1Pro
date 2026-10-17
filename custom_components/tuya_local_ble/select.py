@@ -136,7 +136,7 @@ mapping: dict[str, TuyaBLECategorySelectMapping] = {
                     ),
                 ),
             ],
-            "hc7n0urm":  # Raykube A1 Ultra / A1 Pro Max TuyaOS FD50 lock
+            "hc7n0urm":  # Raykube A1 Ultra TuyaOS FD50 lock
             [
                 TuyaBLESelectMapping(
                     dp_id=31,

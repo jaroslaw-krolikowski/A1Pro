@@ -1,4 +1,4 @@
-"""Diagnostics download ("Download diagnostics") for Raykube A1 Pro (Tuya BLE) devices."""
+"""Diagnostics download ("Download diagnostics") for Raykube A1 Ultra (Tuya BLE) devices."""
 from __future__ import annotations
 
 from typing import Any
