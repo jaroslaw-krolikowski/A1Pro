@@ -226,6 +226,11 @@ class TuyaBLELock(TuyaBLEEntity, LockEntity):
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
+        # The status read during setup runs before this entity exists, so
+        # take the state it already delivered instead of waiting for the
+        # next report.
+        self.update_device_state()
+        self._update_attrs()
         if self._device.product_id in ("hc7n0urm", "y2yaegze"):
             self._schedule_startup_refresh(RAYKUBE_STARTUP_REFRESH_DELAY)
 

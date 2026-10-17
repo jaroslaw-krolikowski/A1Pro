@@ -24,6 +24,7 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import EntityCategory
+from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
@@ -31,6 +32,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from .const import DOMAIN
 from .devices import TuyaBLEData, TuyaBLEEntity, TuyaBLEProductInfo
 from .raykube import RaykubeConfig, get_raykube_config
+from .restore import async_restore_datapoint
 from .tuya_ble import TuyaBLEDataPointType, TuyaBLEDevice
 
 _LOGGER = logging.getLogger(__name__)
@@ -513,7 +515,7 @@ class TuyaBLENumber(TuyaBLEEntity, NumberEntity):
         return result
 
 
-class TuyaBLERaykubeAutoLockTime(TuyaBLEEntity, NumberEntity):
+class TuyaBLERaykubeAutoLockTime(TuyaBLEEntity, NumberEntity, RestoreEntity):
     """Delay between unlocking and automatic locking, in seconds."""
 
     def __init__(
@@ -543,6 +545,14 @@ class TuyaBLERaykubeAutoLockTime(TuyaBLEEntity, NumberEntity):
         self._attr_mode = NumberMode.BOX
         self._dp_id = dp_id
         self._config = config
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        if await async_restore_datapoint(
+            self, self._device, self._dp_id, TuyaBLEDataPointType.DT_VALUE,
+            lambda state: int(float(state)),
+        ):
+            self._coordinator.async_update_listeners()
 
     @property
     def available(self) -> bool:
