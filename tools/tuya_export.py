@@ -293,10 +293,13 @@ def current_values(raw: dict) -> dict[str, object]:
 
 def raykube_block(properties: list[dict]) -> dict:
     """Build the devices.json "raykube" block from the DP model."""
-    block: dict[str, object] = {"dps": {}}
+    block: dict[str, object] = {"dps": {}, "dp_codes": {}}
     for prop in properties:
         code = prop["code"] or ""
         spec = prop["type_spec"]
+        if code and prop.get("dp_id") is not None:
+            # DP names for the diagnostic sensors in Home Assistant.
+            block["dp_codes"][str(prop["dp_id"])] = code
         if code in FEATURE_CODES:
             block["dps"][FEATURE_CODES[code]] = prop["dp_id"]
         if code == "beep_volume" and spec.get("range"):

@@ -8,7 +8,7 @@ volume levels can be overridden per device with a `raykube` block in
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .tuya_ble import TuyaBLEDevice
 
@@ -35,6 +35,48 @@ PRODUCT_BEEP_VOLUME_OPTIONS = {
 # credential management payloads).
 SENSITIVE_DPS = (1, 2, 3, 54, 61, 70, 71, 72, 73)
 
+# DP codes from the Tuya cloud model, for diagnostics. DPs reported over BLE
+# but missing from the cloud model (e.g. 11, 34, 40, 76, 77) have no code.
+PRODUCT_DP_CODES: dict[str, dict[int, str]] = {
+    "hc7n0urm": {
+        1: "unlock_method_create",
+        2: "unlock_method_delete",
+        3: "unlock_method_modify",
+        9: "battery_state",
+        16: "unlock_key",
+        19: "unlock_ble",
+        20: "lock_record",
+        21: "alarm_lock",
+        31: "beep_volume",
+        33: "automatic_lock",
+        36: "auto_lock_time",
+        44: "rtc_lock",
+        46: "manual_lock",
+        47: "lock_motor_state",
+        54: "synch_method",
+        61: "remote_no_dp_key",
+        62: "unlock_phone_remote",
+        63: "unlock_voice_remote",
+        68: "special_function",
+        69: "record",
+        70: "check_code_set",
+        71: "ble_unlock_check",
+        72: "unlock_record_check",
+        73: "remote_pd_setkey_check",
+        78: "special_control",
+    },
+}
+
+# Enum value names (index order) from the Tuya cloud model.
+PRODUCT_DP_ENUMS: dict[str, dict[int, list[str]]] = {
+    "hc7n0urm": {
+        9: ["high", "medium", "low", "poweroff"],
+        21: ["low_battery", "power_off"],
+        31: ["mute", "normal"],
+        68: ["function1", "function2", "function3", "function4"],
+    },
+}
+
 
 @dataclass
 class RaykubeConfig:
@@ -45,9 +87,16 @@ class RaykubeConfig:
     auto_lock_time_min: int
     auto_lock_time_max: int
     sleepy: bool
+    dp_codes: dict[int, str] = field(default_factory=dict)
+    dp_enums: dict[int, list[str]] = field(default_factory=dict)
 
     def dp(self, feature: str) -> int | None:
         return self.dps.get(feature)
+
+    def dp_name(self, dp_id: int) -> str:
+        """Attribute-style name of a DP: dp_47_lock_motor_state or dp_11."""
+        code = self.dp_codes.get(dp_id)
+        return f"dp_{dp_id}_{code}" if code else f"dp_{dp_id}"
 
 
 def is_raykube(device: TuyaBLEDevice) -> bool:
@@ -74,6 +123,17 @@ def get_raykube_config(device: TuyaBLEDevice) -> RaykubeConfig | None:
     if unmute_level not in volume_options or unmute_level == volume_options[0]:
         unmute_level = volume_options[-1]
 
+    # Feature DPs remapped in devices.json name the DP after the feature.
+    dp_codes = dict(PRODUCT_DP_CODES.get(device.product_id, {}))
+    for feature, dp_id in dps.items():
+        if dp_id and dp_id not in dp_codes:
+            dp_codes[dp_id] = feature
+    for dp_id, code in (options.get("dp_codes") or {}).items():
+        dp_codes[int(dp_id)] = str(code)
+    dp_enums = dict(PRODUCT_DP_ENUMS.get(device.product_id, {}))
+    if dps.get("beep_volume"):
+        dp_enums[dps["beep_volume"]] = volume_options
+
     return RaykubeConfig(
         dps=dps,
         beep_volume_options=volume_options,
@@ -82,4 +142,6 @@ def get_raykube_config(device: TuyaBLEDevice) -> RaykubeConfig | None:
         auto_lock_time_min=int(options.get("auto_lock_time_min", 1)),
         auto_lock_time_max=int(options.get("auto_lock_time_max", 1800)),
         sleepy=device.product_id in RAYKUBE_SLEEPY_PRODUCT_IDS,
+        dp_codes=dp_codes,
+        dp_enums=dp_enums,
     )

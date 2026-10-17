@@ -21,9 +21,38 @@ CONF_BLE_UNLOCK_CHECK: Final = "ble_unlock_check"
 # Optional devices.json block with Raykube A1 Pro overrides (DP ids, volume
 # levels, auto-lock range). See docs/raykube-a1-pro.md.
 CONF_RAYKUBE: Final = "raykube"
-# Opt-in persistent BLE session for battery locks (e.g. Raykube hc7n0urm).
-# Default off: connect on demand + advertisement refresh. On: keepalive like rlyxv7pe.
+# Legacy boolean option, read as CONNECTION_MODE_PERMANENT when set.
 CONF_KEEP_CONNECTED: Final = "keep_connected"
+
+# How Home Assistant talks to a sleeping battery lock (Raykube hc7n0urm):
+# - periodic: connect and read the state after an advertisement, at most
+#   every PERIODIC_REFRESH_INTERVAL (default, the original behaviour);
+# - advertisement_change: read the state as soon as the advertised data
+#   changes (e.g. after a manual turn), with a slow periodic fallback;
+# - permanent: keep the BLE session open and reconnect when it drops.
+CONF_CONNECTION_MODE: Final = "connection_mode"
+CONNECTION_MODE_PERIODIC: Final = "periodic"
+CONNECTION_MODE_ADVERTISEMENT: Final = "advertisement_change"
+CONNECTION_MODE_PERMANENT: Final = "permanent"
+CONNECTION_MODES: Final = [
+    CONNECTION_MODE_PERIODIC,
+    CONNECTION_MODE_ADVERTISEMENT,
+    CONNECTION_MODE_PERMANENT,
+]
+PERIODIC_REFRESH_INTERVAL: Final = 300  # s
+ADVERTISEMENT_REFRESH_MIN_INTERVAL: Final = 10  # s between two reads
+ADVERTISEMENT_FALLBACK_INTERVAL: Final = 1800  # s
+PERMANENT_CHECK_INTERVAL: Final = 60  # s
+
+
+def get_connection_mode(options) -> str:
+    """Connection mode from the entry options (legacy keep_connected aware)."""
+    mode = options.get(CONF_CONNECTION_MODE)
+    if mode in CONNECTION_MODES:
+        return mode
+    if options.get(CONF_KEEP_CONNECTED):
+        return CONNECTION_MODE_PERMANENT
+    return CONNECTION_MODE_PERIODIC
 
 CONF_CRED_FILE = DOMAIN + "/devices.json"
 

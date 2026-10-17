@@ -154,3 +154,39 @@ def test_missing_devices_json_shows_error_instead_of_crashing(tmp_path):
         await hass.async_stop(force=True)
 
     asyncio.run(scenario())
+
+
+def test_options_flow_sets_connection_mode_and_migrates_keep_connected(tmp_path):
+    async def scenario():
+        hass = await start_hass(tmp_path, CREDENTIALS)
+        entry = config_entries.ConfigEntry(
+            version=1, minor_version=1, domain=DOMAIN, title="Raykube",
+            data={"address": LOCK_MAC}, source=config_entries.SOURCE_USER,
+            options={"keep_connected": True, "local_key": "kept"},
+            unique_id=LOCK_MAC, discovery_keys={}, subentries_data=None,
+        )
+        with patch(
+            "custom_components.tuya_local_ble.async_setup_entry", return_value=True
+        ), patch(
+            "custom_components.tuya_local_ble.async_unload_entry", return_value=True
+        ), patch(
+            "homeassistant.setup._async_process_dependencies", return_value=[]
+        ):
+            await hass.config_entries.async_add(entry)
+            result = await hass.config_entries.options.async_init(entry.entry_id)
+            assert result["type"] == "form"
+            schema = result["data_schema"].schema
+            (key,) = schema
+            assert key == "connection_mode"
+            assert key.default() == "permanent"  # legacy keep_connected
+            assert schema[key].config["options"] == ["periodic", "advertisement_change", "permanent"]
+
+            result = await hass.config_entries.options.async_configure(
+                result["flow_id"], {"connection_mode": "advertisement_change"}
+            )
+            await hass.async_block_till_done()
+        assert result["type"] == "create_entry"
+        assert entry.options == {"local_key": "kept", "connection_mode": "advertisement_change"}
+        await hass.async_stop(force=True)
+
+    asyncio.run(scenario())

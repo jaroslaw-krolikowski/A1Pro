@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 import logging
-from typing import Callable
+from typing import Any, Callable
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -43,6 +43,7 @@ from .const import (
     DOMAIN,
 )
 from .devices import TuyaBLEData, TuyaBLEEntity, TuyaBLEProductInfo
+from .diagnostics_data import change_lines, connection_data, datapoint_rows, iso_time
 from .raykube import SENSITIVE_DPS, RaykubeConfig, get_raykube_config
 from .tuya_ble import TuyaBLEDataPointType, TuyaBLEDevice
 
@@ -572,11 +573,16 @@ class TuyaBLESensor(TuyaBLEEntity, SensorEntity):
 
 
 class TuyaBLERaykubeDatapointsSensor(TuyaBLEEntity, SensorEntity):
-    """Diagnostic: every datapoint received from the lock, as attributes.
+    """Diagnostic: every datapoint of the lock, named, with recent changes.
 
-    Used to confirm DP numbers by changing a setting in the
-    Tuya app and comparing the snapshot after "Refresh status".
+    State: how many datapoints the lock itself has reported. Attributes:
+    one per datapoint (dp_47_lock_motor_state: false, ...), which of them
+    were last set or assumed by Home Assistant rather than reported by the
+    lock, when the lock last reported anything, and the recent changes.
     """
+
+    # Kept out of the recorder: the same data is in the per-DP attributes.
+    _unrecorded_attributes = frozenset({"recent_changes", "not_from_lock"})
 
     def __init__(
         self,
@@ -605,23 +611,86 @@ class TuyaBLERaykubeDatapointsSensor(TuyaBLEEntity, SensorEntity):
 
     @property
     def native_value(self) -> int:
-        return len(self._datapoint_attributes())
-
-    def _datapoint_attributes(self) -> dict[str, str | int | bool]:
-        result: dict[str, str | int | bool] = {}
-        for dp_id in sorted(self._device.datapoints._datapoints):
-            if dp_id in SENSITIVE_DPS or dp_id == 118:
-                continue
-            datapoint = self._device.datapoints[dp_id]
-            value = datapoint.value
-            if isinstance(value, (bytes, bytearray)):
-                value = value.hex()
-            result[f"dp_{dp_id}"] = value
-        return result
+        return sum(
+            1 for row in datapoint_rows(self._device, self._config)
+            if row["source"] == "device"
+        )
 
     @property
-    def extra_state_attributes(self) -> dict[str, str | int | bool]:
-        return self._datapoint_attributes()
+    def extra_state_attributes(self) -> dict[str, Any]:
+        rows = [
+            row for row in datapoint_rows(self._device, self._config)
+            if row["id"] not in SENSITIVE_DPS
+        ]
+        attributes: dict[str, Any] = {row["name"]: row["value"] for row in rows}
+        attributes["not_from_lock"] = [
+            row["name"] for row in rows if row["source"] != "device"
+        ]
+        attributes["last_report"] = iso_time(self._device.datapoints.last_device_report)
+        attributes["recent_changes"] = change_lines(self._device, self._config, 15)
+        return attributes
+
+
+CONNECTION_STATES = ["connected", "connecting", "disconnected", "error"]
+
+
+class TuyaBLERaykubeConnectionSensor(TuyaBLEEntity, SensorEntity):
+    """Diagnostic: BLE connection state with the last error and frames."""
+
+    _unrecorded_attributes = frozenset(
+        {
+            "connect_attempts",
+            "last_frame_received",
+            "last_frame_received_code",
+            "last_frame_sent",
+            "last_frame_sent_code",
+            "rssi",
+        }
+    )
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        coordinator: DataUpdateCoordinator,
+        device: TuyaBLEDevice,
+        product: TuyaBLEProductInfo,
+        config: RaykubeConfig,
+    ) -> None:
+        super().__init__(
+            hass,
+            coordinator,
+            device,
+            product,
+            SensorEntityDescription(
+                key="connection",
+                icon="mdi:bluetooth-connect",
+                device_class=SensorDeviceClass.ENUM,
+                options=CONNECTION_STATES,
+                entity_category=EntityCategory.DIAGNOSTIC,
+            ),
+        )
+        self._config = config
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            self._device.register_connection_callback(self.async_write_ha_state)
+        )
+
+    @property
+    def available(self) -> bool:
+        # The state is meaningful (and most useful) while disconnected.
+        return True
+
+    @property
+    def native_value(self) -> str:
+        return self._device.connection.state
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        data = connection_data(self._device)
+        data.pop("state")
+        return data
 
 
 async def async_setup_entry(
@@ -644,6 +713,11 @@ async def async_setup_entry(
     if (raykube_config := get_raykube_config(data.device)) is not None:
         entities.append(
             TuyaBLERaykubeDatapointsSensor(
+                hass, data.coordinator, data.device, data.product, raykube_config
+            )
+        )
+        entities.append(
+            TuyaBLERaykubeConnectionSensor(
                 hass, data.coordinator, data.device, data.product, raykube_config
             )
         )

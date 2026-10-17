@@ -1,42 +1,53 @@
 blueprint:
-  name: Zamek - tryb uzbrojenia (powiadomienie przy ręcznym otwarciu)
+  name: >-
+    Zamek - tryb uzbrojenia / Lock - arming mode
+    (powiadomienie przy ręcznym otwarciu / notify on manual unlock)
   description: >-
     Gdy tryb uzbrojenia jest włączony, a zamek zostanie otwarty ręcznie
     (gałką, kluczem lub z aplikacji Tuya, czyli nie przez Home Assistant),
     wysyła powiadomienie. Nie zmienia stanu zamka ani jego ustawień.
-
-
     Otwarcie przez Home Assistant (z panelu, automatyzacji, asystenta
     głosowego) nie wysyła powiadomienia.
 
 
-    Wymaga stałego połączenia BLE z zamkiem: w opcjach integracji
-    Tuya Local BLE (Ustawienia > Urządzenia i usługi > Tuya Local BLE >
-    Konfiguruj) włącz "Stałe połączenie (24/7)" / "Keep connected (24/7)",
-    najlepiej przez ESPHome BLE proxy. Bez tego HA dowiaduje się o ręcznym
-    otwarciu z opóźnieniem albo wcale. Konfiguracja telefonu (iPhone i
-    Android): docs/raykube-a1-pro.md w repozytorium.
+    While arming mode is on and the lock is unlocked by hand (thumb turn,
+    key or the Tuya app, i.e. not through Home Assistant), sends a
+    notification. It never changes the lock or its settings. Unlocking
+    through Home Assistant (dashboard, automation, voice assistant) does
+    not notify.
+
+
+    Wymaga szybkiego trybu połączenia / Needs a fast connection mode:
+    Tuya Local BLE > Konfiguruj / Configure > Tryb połączenia / Connection
+    mode > "Stałe połączenie (24/7)" / "Permanent connection (24/7)" albo /
+    or "Po zmianie rozgłaszania" / "On advertisement change". Konfiguracja
+    telefonu / phone setup:
+    docs/raykube-a1-pro.md (PL), docs/raykube-a1-pro.en.md (EN).
   domain: automation
   source_url: https://github.com/jaroslaw-krolikowski/A1Pro/blob/master/blueprints/automation/a1pro/lock_arming_alarm.yaml
   input:
     lock_entity:
-      name: Zamek
+      name: Zamek / Lock
       selector:
         entity:
           filter:
             - domain: lock
     arming_entity:
-      name: Tryb uzbrojenia
+      name: Tryb uzbrojenia / Arming mode
       description: >-
         Pomocnik typu przełącznik (Ustawienia → Urządzenia i usługi →
         Pomocnicy → Przełącznik), np. input_boolean.zamek_uzbrojony.
+        / A toggle helper (Settings → Devices & services → Helpers →
+        Toggle), e.g. input_boolean.lock_armed.
       selector:
         entity:
           filter:
             - domain: input_boolean
     notify_actions:
-      name: Powiadomienie
-      description: Np. notify.mobile_app_telefon z dźwiękiem alarmu.
+      name: Powiadomienie / Notification
+      description: >-
+        Np. notify.mobile_app_telefon z dźwiękiem alarmu.
+        / E.g. notify.mobile_app_phone with an alarm sound.
       selector:
         action: {}
 

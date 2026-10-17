@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import time
+from datetime import timedelta
 from pathlib import Path
 
 import voluptuous as vol
@@ -18,12 +19,23 @@ from homeassistant.core import Event, HomeAssistant, ServiceCall, callback
 from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.typing import ConfigType
 
-from .tuya_ble import TuyaBLEDataPointType, TuyaBLEDevice
+from .tuya_ble import SOURCE_HOME_ASSISTANT, TuyaBLEDataPointType, TuyaBLEDevice
 
 from .keyman import HASSTuyaBLEDeviceManager
-from .const import DOMAIN
+from .const import (
+    ADVERTISEMENT_FALLBACK_INTERVAL,
+    ADVERTISEMENT_REFRESH_MIN_INTERVAL,
+    CONNECTION_MODE_ADVERTISEMENT,
+    CONNECTION_MODE_PERIODIC,
+    CONNECTION_MODE_PERMANENT,
+    DOMAIN,
+    PERIODIC_REFRESH_INTERVAL,
+    PERMANENT_CHECK_INTERVAL,
+    get_connection_mode,
+)
 from .devices import TuyaBLECoordinator, TuyaBLEData, get_device_product_info
 
 PLATFORMS: list[Platform] = [
@@ -132,10 +144,23 @@ async def _async_set_datapoint(hass: HomeAssistant, call: ServiceCall) -> None:
     datapoints = data.device.datapoints
     datapoint = datapoints[dp_id]
     if datapoint is None or datapoint.type != dp_type:
-        datapoints._update_from_device(dp_id, time.time(), 0, dp_type, value)
+        datapoints._update_from_device(
+            dp_id, time.time(), 0, dp_type, value, source=SOURCE_HOME_ASSISTANT
+        )
         datapoint = datapoints[dp_id]
     await datapoint.set_value(value)
     data.coordinator.async_update_listeners()
+
+
+def status_read_due(mode: str, advertisement_changed: bool, since_last_read: float) -> bool:
+    """Whether an advertisement should trigger a status read of a sleeping lock."""
+    if mode == CONNECTION_MODE_PERIODIC:
+        return since_last_read >= PERIODIC_REFRESH_INTERVAL
+    if mode == CONNECTION_MODE_ADVERTISEMENT:
+        return (
+            advertisement_changed and since_last_read >= ADVERTISEMENT_REFRESH_MIN_INTERVAL
+        ) or since_last_read >= ADVERTISEMENT_FALLBACK_INTERVAL
+    return False  # permanent: the keep-connected check holds the session
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -167,24 +192,28 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await device.update()
     
-    last_raykube_advertisement_update = 0.0
+    mode = get_connection_mode(entry.options)
+    sleepy_lock = device.product_id in ("hc7n0urm", "y2yaegze")
+    if sleepy_lock:
+        device._update_connection(connection_mode=mode)
+    last_status_read = 0.0
 
-    async def _async_update_raykube_from_advertisement() -> None:
-        """Best-effort Raykube state refresh after a BLE advertisement."""
+    async def _async_read_status() -> None:
+        """Best-effort connect and status read of a sleeping lock."""
         try:
             await device.update()
         except BLEAK_EXCEPTIONS:
-            _LOGGER.debug(
-                "%s: Raykube advertisement-triggered update failed",
-                address,
-                exc_info=True,
-            )
+            _LOGGER.debug("%s: status read failed", address, exc_info=True)
         except Exception:
-            _LOGGER.debug(
-                "%s: Raykube advertisement-triggered update failed unexpectedly",
-                address,
-                exc_info=True,
-            )
+            _LOGGER.debug("%s: status read failed unexpectedly", address, exc_info=True)
+
+    @callback
+    def _async_schedule_status_read() -> None:
+        nonlocal last_status_read
+        last_status_read = time.monotonic()
+        entry.async_create_background_task(
+            hass, _async_read_status(), f"{DOMAIN} status read {address}"
+        )
 
     @callback
     def _async_update_ble(
@@ -192,19 +221,30 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         change: bluetooth.BluetoothChange,
     ) -> None:
         """Update from a ble callback."""
-        nonlocal last_raykube_advertisement_update
-        device.set_ble_device_and_advertisement_data(
+        changed = device.set_ble_device_and_advertisement_data(
             service_info.device, service_info.advertisement
         )
-        if device.product_id in ("hc7n0urm", "y2yaegze"):
-            # Raykube locks do not push manual/keypad state changes while the
-            # integration is disconnected. A fresh advertisement after a
-            # physical action is the safest low-power cue we have to reconnect
-            # and request status, without keeping a permanent BLE session open.
-            now = time.monotonic()
-            if now - last_raykube_advertisement_update >= 300:
-                last_raykube_advertisement_update = now
-                hass.async_create_task(_async_update_raykube_from_advertisement())
+        if not sleepy_lock:
+            return
+        # Raykube locks do not push manual/keypad state changes while the
+        # integration is disconnected, so an advertisement is the cue to
+        # connect and request the status (see CONF_CONNECTION_MODE).
+        if status_read_due(mode, changed, time.monotonic() - last_status_read):
+            _async_schedule_status_read()
+
+    if sleepy_lock and mode == CONNECTION_MODE_PERMANENT:
+        # The session reconnects by itself when the lock drops it; this
+        # check also covers a failed or never started reconnect.
+        async def _async_keep_connected(_now) -> None:
+            if device.is_connected or device.connection.state == "connecting":
+                return
+            await _async_read_status()
+
+        entry.async_on_unload(
+            async_track_time_interval(
+                hass, _async_keep_connected, timedelta(seconds=PERMANENT_CHECK_INTERVAL)
+            )
+        )
 
     entry.async_on_unload(
         bluetooth.async_register_callback(
@@ -248,7 +288,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Reload when options (e.g. keep_connected) change."""
+    """Reload when options (e.g. the connection mode) change."""
     await hass.config_entries.async_reload(entry.entry_id)
 
 

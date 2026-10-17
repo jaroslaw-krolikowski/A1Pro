@@ -1,7 +1,7 @@
 """The Tuya BLE integration."""
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 
 import logging
 from typing import Callable
@@ -24,9 +24,9 @@ from homeassistant.const import (
     STATE_UNKNOWN,
 )
 
-from .const import CONF_KEEP_CONNECTED, DOMAIN
+from .const import DOMAIN
 from .devices import TuyaBLEData, TuyaBLEEntity, TuyaBLEProductInfo
-from .tuya_ble import TuyaBLEDataPointType, TuyaBLEDevice
+from .tuya_ble import SOURCE_HOME_ASSISTANT, TuyaBLEDataPointType, TuyaBLEDevice
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -318,7 +318,8 @@ class TuyaBLELock(TuyaBLEEntity, LockEntity):
             await datapoint.set_value(True)
             state_value = False if self._mapping.value_means_locked else True
             self._device.datapoints._update_from_device(
-                self._mapping.dp_id, time.time(), 0, TuyaBLEDataPointType.DT_BOOL, state_value
+                self._mapping.dp_id, time.time(), 0, TuyaBLEDataPointType.DT_BOOL, state_value,
+                source=SOURCE_HOME_ASSISTANT,
             )
             self._current_state = LockState.UNLOCKED
             self._commanded = False
@@ -332,7 +333,8 @@ class TuyaBLELock(TuyaBLEEntity, LockEntity):
             await datapoint.set_value(True)
             state_value = True if self._mapping.value_means_locked else False
             self._device.datapoints._update_from_device(
-                self._mapping.dp_id, time.time(), 0, TuyaBLEDataPointType.DT_BOOL, state_value
+                self._mapping.dp_id, time.time(), 0, TuyaBLEDataPointType.DT_BOOL, state_value,
+                source=SOURCE_HOME_ASSISTANT,
             )
             self._current_state = LockState.LOCKED
             self._commanded = False
@@ -361,6 +363,7 @@ class TuyaBLELock(TuyaBLEEntity, LockEntity):
             0,
             TuyaBLEDataPointType.DT_ENUM,
             1 if state == LockState.UNLOCKED else 0,
+            source=SOURCE_HOME_ASSISTANT,
         )
         self._current_state = state
         self._commanded = False
@@ -457,16 +460,11 @@ async def async_setup_entry(
     data: TuyaBLEData = hass.data[DOMAIN][entry.entry_id]
     mappings = get_mapping_by_device(data.device)
     entities: list[TuyaBLELock] = []
-    # Raykube: persistent connection is opt-in (default off). Gimdow keeps
-    # hardcoded keep_connect=True for existing behavior.
-    raykube_keep_connected = bool(entry.options.get(CONF_KEEP_CONNECTED, False))
+    # Raykube locks never get the DP52 keepalive (DP52 deletes temporary
+    # passwords there); their connection mode is handled in __init__.py.
+    # Gimdow keeps its hardcoded keep_connect=True.
     for mapping in mappings:
         runtime_mapping = mapping
-        if data.device.product_id in ("hc7n0urm", "y2yaegze"):
-            runtime_mapping = replace(
-                mapping,
-                keep_connect=raykube_keep_connected,
-            )
         if runtime_mapping.force_add or data.device.datapoints.has_id(
             runtime_mapping.dp_id, runtime_mapping.dp_type
         ):
