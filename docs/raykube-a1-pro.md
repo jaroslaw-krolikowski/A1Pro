@@ -404,9 +404,12 @@ Identyfikatory encji (`lock.twoj_zamek` itd.) podmień na swoje z ustawień urz�
 
 ## Ograniczenia
 
-- Po restarcie HA stan zamka i ustawień jest nieznany, dopóki zamek się nie odezwie. Dlatego ok. 20 s
-  po starcie integracja sama łączy się z zamkiem i pobiera stan. Jeśli zamek jest poza zasięgiem,
-  ponawia to co 2 minuty, maksymalnie 3 razy.
+- Po restarcie HA (także po aktualizacji integracji) ustawienia zamka: auto-zamykanie, czas, wyciszenie
+  i głośność pokazują ostatnie znane wartości. Do czasu potwierdzenia przez zamek są w sensorze *Datapointy*
+  na liście *Nie od zamka*. Przywrócone wartości nie są wysyłane do zamka.
+- Stan zamka (zamknięty / otwarty) nie jest przywracany, bo mógł się zmienić w czasie restartu.
+  HA odczytuje go z zamka przy starcie, a jeśli się nie uda, ok. 20 s później ponawia odczyt
+  co 2 minuty, maksymalnie 3 razy.
 - Zamek na baterie śpi między komendami. HA łączy się na żądanie, więc każda zmiana trwa kilka sekund.
   Stan ustawień odświeża się przy każdym połączeniu (snapshot), przyciskiem **Odśwież stan**
   albo na stałe w trybie połączenia *Stałe połączenie (24/7)* (wtedy lepiej użyć ESPHome BLE proxy).

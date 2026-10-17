@@ -14,6 +14,7 @@ from homeassistant.const import UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import (
@@ -24,6 +25,7 @@ from .const import (
 )
 from .devices import TuyaBLEData, TuyaBLEEntity, TuyaBLEProductInfo
 from .raykube import get_raykube_config
+from .restore import async_restore_datapoint
 from .tuya_ble import TuyaBLEDataPointType, TuyaBLEDevice
 
 _LOGGER = logging.getLogger(__name__)
@@ -314,7 +316,7 @@ def get_mapping_by_device(
         return []
 
 
-class TuyaBLESelect(TuyaBLEEntity, SelectEntity):
+class TuyaBLESelect(TuyaBLEEntity, SelectEntity, RestoreEntity):
     """Representation of a Tuya BLE select."""
 
     def __init__(
@@ -337,6 +339,21 @@ class TuyaBLESelect(TuyaBLEEntity, SelectEntity):
         # Raykube volume/direction often lack a durable DP echo. Keep last known
         # option so coordinator updates from lock reverse-sync do not wipe HA state.
         self._sticky_option: str | None = None
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        if not self._is_raykube_sticky_select():
+            return
+        if self._mapping.description.key == "beep_volume":
+            if await async_restore_datapoint(
+                self, self._device, self._mapping.dp_id, TuyaBLEDataPointType.DT_ENUM,
+                lambda state: self._attr_options.index(state) if state in self._attr_options else None,
+            ):
+                self._coordinator.async_update_listeners()
+        elif (last_state := await self.async_get_last_state()) is not None:
+            # Display only (e.g. lock direction): never written to the lock.
+            if last_state.state in self._attr_options:
+                self._sticky_option = last_state.state
 
     def _is_raykube_sticky_select(self) -> bool:
         if self._device.product_id == "hc7n0urm":

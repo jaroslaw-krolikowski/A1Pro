@@ -410,9 +410,12 @@ Replace the entity ids (`lock.your_lock` etc.) with your own from the device pag
 
 ## Limitations
 
-- After an HA restart the lock and its settings are unknown until the lock answers. That is why the
-  integration connects to the lock about 20 s after startup and reads its state. If the lock is out of
-  range, it retries every 2 minutes, up to 3 times.
+- After an HA restart (including an integration update) the lock settings (auto-lock, delay, mute,
+  volume) show their last known values. Until the lock confirms them they are listed under *Not reported
+  by the lock* in the *Datapoints* sensor. Restored values are never sent to the lock.
+- The lock state (locked / unlocked) is not restored, because it may have changed during the restart.
+  HA reads it from the lock at startup and, if that fails, retries about 20 s later and then every
+  2 minutes, up to 3 times.
 - The battery lock sleeps between commands. HA connects on demand, so every change takes a few seconds.
   Settings are refreshed on every connection (snapshot), with **Refresh status**, or permanently with
   the *Permanent connection (24/7)* connection mode (an ESPHome BLE proxy is recommended then).

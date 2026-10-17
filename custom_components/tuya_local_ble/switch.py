@@ -14,11 +14,13 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import DOMAIN
 from .devices import TuyaBLEData, TuyaBLEEntity, TuyaBLEProductInfo
 from .raykube import RaykubeConfig, get_raykube_config
+from .restore import async_restore_datapoint
 from .tuya_ble import TuyaBLEDataPointType, TuyaBLEDevice
 
 _LOGGER = logging.getLogger(__name__)
@@ -479,7 +481,7 @@ class TuyaBLESwitch(TuyaBLEEntity, SwitchEntity):
         return result
 
 
-class TuyaBLERaykubeBoolSwitch(TuyaBLEEntity, SwitchEntity):
+class TuyaBLERaykubeBoolSwitch(TuyaBLEEntity, SwitchEntity, RestoreEntity):
     """Raykube setting backed by a boolean DP (auto-lock)."""
 
     def __init__(
@@ -495,6 +497,14 @@ class TuyaBLERaykubeBoolSwitch(TuyaBLEEntity, SwitchEntity):
         super().__init__(hass, coordinator, device, product, description)
         self._dp_id = dp_id
         self._config = config
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        if await async_restore_datapoint(
+            self, self._device, self._dp_id, TuyaBLEDataPointType.DT_BOOL,
+            lambda state: {"on": True, "off": False}.get(state),
+        ):
+            self._coordinator.async_update_listeners()
 
     @property
     def available(self) -> bool:
@@ -522,7 +532,7 @@ class TuyaBLERaykubeBoolSwitch(TuyaBLEEntity, SwitchEntity):
         await self._async_set(False)
 
 
-class TuyaBLERaykubeMuteSwitch(TuyaBLEEntity, SwitchEntity):
+class TuyaBLERaykubeMuteSwitch(TuyaBLEEntity, SwitchEntity, RestoreEntity):
     """Mute on/off on top of the beep_volume enum DP.
 
     Unmuting restores the last non-mute volume level seen on the lock, or
@@ -552,6 +562,16 @@ class TuyaBLERaykubeMuteSwitch(TuyaBLEEntity, SwitchEntity):
         self._dp_id = dp_id
         self._config = config
         self._last_level = config.beep_volume_options.index(config.unmute_level)
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        # Only "muted" pins the level; for "not muted" the volume select
+        # restores the actual level.
+        if await async_restore_datapoint(
+            self, self._device, self._dp_id, TuyaBLEDataPointType.DT_ENUM,
+            lambda state: 0 if state == "on" else None,
+        ):
+            self._coordinator.async_update_listeners()
 
     @property
     def available(self) -> bool:

@@ -197,3 +197,31 @@ def test_startup_read_is_retried_while_the_lock_is_out_of_reach():
         await hass.async_stop(force=True)
 
     asyncio.run(scenario())
+
+
+def test_state_reported_before_the_entity_exists_is_shown():
+    async def scenario():
+        hass = HomeAssistant("/tmp")
+        frame.async_setup(hass)
+        await hass.async_start()
+        with startup_delays(0.1, 0.1):
+            device, entity, physical, sent = await make_lock(hass)
+            # Integration setup reads the lock before the platforms load.
+            device._parse_datapoints_v4(dp47_report(True))
+            entity2 = lock_platform.TuyaBLELock(
+                hass, entity.coordinator, device,
+                get_device_product_info(device),
+                lock_platform.get_mapping_by_device(device)[0],
+            )
+            entity2.hass = hass
+            entity2.entity_id = "lock.test2"
+            entity2.async_write_ha_state = lambda: None
+            assert entity2.is_locked is None
+            await entity2.async_added_to_hass()
+            assert state(entity2) == LockState.UNLOCKED
+            await asyncio.sleep(0.3)
+            assert "status" not in sent  # known state: no extra startup read
+            await entity2.async_will_remove_from_hass()
+        await hass.async_stop(force=True)
+
+    asyncio.run(scenario())
