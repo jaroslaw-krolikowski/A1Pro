@@ -37,6 +37,7 @@ from .const import (
     TuyaBLEDataPointType,
 )
 from .exceptions import (
+    TuyaBLECommandTimeoutError,
     TuyaBLEDataCRCError,
     TuyaBLEDataFormatError,
     TuyaBLEDataLengthError,
@@ -55,6 +56,14 @@ SOURCE_DEVICE = "device"  # reported by the device
 SOURCE_HOME_ASSISTANT = "home_assistant"  # set or assumed by Home Assistant
 
 DATAPOINT_CHANGES_KEPT = 50
+
+# Raykube / FD50 battery locks: a write that has not reached the lock by its
+# deadline is dropped. Without it a command waits behind earlier ones (BLE
+# connect retries, 60 s response waits) and runs minutes later. A late lock
+# is harmless, a late unlock or calibration is not.
+COMMAND_DEADLINE = 20.0
+LOCK_COMMAND_DEADLINE = 45.0
+DEADLINE_PRODUCTS = ("hc7n0urm", "y2yaegze")
 
 
 @dataclass
@@ -194,11 +203,18 @@ class TuyaBLEDataPoint:
             case TuyaBLEDataPointType.DT_STRING:
                 self._value = str(value)
 
+        previous = (self._changed_by_device, self._source, self._timestamp)
         self._changed_by_device = False
         self._source = SOURCE_HOME_ASSISTANT
         self._timestamp = time.time()
+        try:
+            await self._owner._update_from_user(self._id)
+        except BaseException:
+            # Not sent: keep showing what the device last had.
+            self._value = old
+            self._changed_by_device, self._source, self._timestamp = previous
+            raise
         self._owner._record_change(self._id, old, self._value, SOURCE_HOME_ASSISTANT)
-        await self._owner._update_from_user(self._id)
 
 
 class TuyaBLEDataPoints:
@@ -1140,7 +1156,8 @@ class TuyaBLEDevice:
                 )
                 self._connection_error(f"timeout waiting for the response to {code.name}")
                 result = False
-            self._input_expected_responses.pop(seq_num, None)
+            finally:
+                self._input_expected_responses.pop(seq_num, None)
 
         return result
 
@@ -2181,8 +2198,31 @@ class TuyaBLEDevice:
         """Build an ikphogdj V4 bool write (e.g. automatic_lock)."""
         return self._build_ikphogdj_v4_scalar_data(dp_id, dp_type=0x01)
 
+    @staticmethod
+    def command_deadline(datapoint_ids: list[int]) -> float:
+        """Seconds a write may wait before it is dropped."""
+        return LOCK_COMMAND_DEADLINE if datapoint_ids == [46] else COMMAND_DEADLINE
+
     async def _send_datapoints(self, datapoint_ids: list[int]) -> None:
         """Send new values of datapoints to the device."""
+        if self.product_id not in DEADLINE_PRODUCTS:
+            await self._send_datapoints_now(datapoint_ids)
+            return
+        deadline = self.command_deadline(datapoint_ids)
+        try:
+            async with asyncio.timeout(deadline):
+                await self._send_datapoints_now(datapoint_ids)
+        except TimeoutError as exc:
+            _LOGGER.warning(
+                "%s: datapoints %s not sent within %s s, dropped",
+                self.address,
+                datapoint_ids,
+                deadline,
+            )
+            self._connection_error(f"command {datapoint_ids} dropped after {deadline:g} s")
+            raise TuyaBLECommandTimeoutError(deadline) from exc
+
+    async def _send_datapoints_now(self, datapoint_ids: list[int]) -> None:
         if self.product_id in ("hc7n0urm", "y2yaegze") and 6 in datapoint_ids:
             # This battery lock may be disconnected after Home Assistant startup,
             # so protocol_version can still be unknown here. The Raykube V4 path

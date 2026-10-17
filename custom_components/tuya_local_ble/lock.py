@@ -16,6 +16,8 @@ from homeassistant.components.lock import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import entity_platform
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
@@ -24,15 +26,34 @@ from homeassistant.const import (
     STATE_UNKNOWN,
 )
 
+from .commands import (
+    CALIBRATION_COOLDOWN,
+    COMMAND_LOCK,
+    COMMAND_UNLOCK,
+    async_calibrate,
+    get_command_guard,
+)
 from .const import DOMAIN
 from .devices import TuyaBLEData, TuyaBLEEntity, TuyaBLEProductInfo
-from .tuya_ble import SOURCE_HOME_ASSISTANT, TuyaBLEDataPointType, TuyaBLEDevice
+from .raykube import get_raykube_config
+from .tuya_ble import (
+    SOURCE_DEVICE,
+    SOURCE_HOME_ASSISTANT,
+    TuyaBLEDataPointType,
+    TuyaBLEDevice,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
 # Raykube FD50 locks: after a lock/unlock command, ask the lock for its real
 # state once the motor has finished (it reports DP47 ~7 s after a command).
 RAYKUBE_STATE_REFRESH_DELAY = 12
+# Locking / unlocking is shown until the lock reports its state. Without a
+# report by then the entity goes back to the last state the lock reported
+# and flags the command as unconfirmed: HA never shows "locked" on its own.
+RAYKUBE_CONFIRM_TIMEOUT = 45
+RAYKUBE_PRODUCTS = ("hc7n0urm", "y2yaegze")
+SERVICE_CALIBRATE = "calibrate"
 # After a restart a sleeping lock reports nothing until it is contacted, so
 # ask it for its state instead of showing "unknown" until the next command.
 RAYKUBE_STARTUP_REFRESH_DELAY = 20
@@ -202,6 +223,12 @@ class TuyaBLELock(TuyaBLEEntity, LockEntity):
         self._isjammed = False
         self._unsub_state_refresh: CALLBACK_TYPE | None = None
         self._startup_refresh_attempts = 0
+        # Raykube: command sent, waiting for the lock to report its state.
+        self._pending_target: str | None = None
+        self._pending_since = 0.0
+        self._unsub_confirm_timeout: CALLBACK_TYPE | None = None
+        self._last_command: str | None = None
+        self._command_confirmed: bool | None = None
         self._keep_connect_stop = Event()
         self._keep_connect_thread: Thread | None = None
         self._update_attrs()
@@ -239,6 +266,9 @@ class TuyaBLELock(TuyaBLEEntity, LockEntity):
         if self._unsub_state_refresh is not None:
             self._unsub_state_refresh()
             self._unsub_state_refresh = None
+        if self._unsub_confirm_timeout is not None:
+            self._unsub_confirm_timeout()
+            self._unsub_confirm_timeout = None
         self._keep_connect_stop.set()
         thread = self._keep_connect_thread
         if thread is not None and thread.is_alive():
@@ -252,8 +282,14 @@ class TuyaBLELock(TuyaBLEEntity, LockEntity):
         return self._current_state == LockState.LOCKED
 
     @property
+    def _is_raykube(self) -> bool:
+        return self._device.product_id in RAYKUBE_PRODUCTS
+
+    @property
     def is_locking(self) -> bool:
         """Return true if device is locking."""
+        if self._is_raykube:
+            return self._pending_target == LockState.LOCKED
         return (
             self._current_state == LockState.UNLOCKED
             and self._target_state == LockState.LOCKED
@@ -263,6 +299,8 @@ class TuyaBLELock(TuyaBLEEntity, LockEntity):
     @property
     def is_unlocking(self) -> bool:
         """Return true if device is unlocking."""
+        if self._is_raykube:
+            return self._pending_target == LockState.UNLOCKED
         return (
             self._current_state == LockState.LOCKED
             and self._target_state == LockState.UNLOCKED
@@ -277,6 +315,32 @@ class TuyaBLELock(TuyaBLEEntity, LockEntity):
     # Alarm properties
     @property
     def should_poll(self) -> bool: return False
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        if not self._is_raykube:
+            return None
+        guard = get_command_guard(self._device)
+        last_calibration = guard.last_calibration
+        blocked = guard.calibration_blocked_for()
+        return {
+            # False: the lock did not report its state after the last command,
+            # so the shown state is the last one the lock reported.
+            "last_command": self._last_command,
+            "command_confirmed": self._command_confirmed,
+            "last_calibration": (
+                datetime.fromtimestamp(last_calibration).astimezone().isoformat()
+                if last_calibration
+                else None
+            ),
+            "calibration_blocked_until": (
+                datetime.fromtimestamp(last_calibration + CALIBRATION_COOLDOWN)
+                .astimezone()
+                .isoformat()
+                if blocked
+                else None
+            ),
+        }
 
     def _update_attrs(self) -> None:
         self._attr_is_locking = self.is_locking
@@ -295,6 +359,9 @@ class TuyaBLELock(TuyaBLEEntity, LockEntity):
         await self._set_lock_state(LockState.UNLOCKED)
 
     async def _set_lock_state(self, state: str) -> None:
+        if self._is_raykube:
+            await self._raykube_command(state)
+            return
         self._target_state = state
         self._update_attrs()
         self.async_write_ha_state()
@@ -309,11 +376,6 @@ class TuyaBLELock(TuyaBLEEntity, LockEntity):
             TuyaBLEDataPointType.DT_BOOL,
             False,
         )
-
-        if self._device.product_id in ("hc7n0urm", "y2yaegze"):
-            await datapoint.set_value(True)
-            self._apply_raykube_commanded_state(self._target_state)
-            return
 
         if self._device.product_id == "ikphogdj" and self._target_state == LockState.UNLOCKED:
             # Similar logic for ikphogdj. Also syncs the real
@@ -355,27 +417,76 @@ class TuyaBLELock(TuyaBLEEntity, LockEntity):
         self._commanded_timer = datetime.now()
 
 
-    def _apply_raykube_commanded_state(self, state: str) -> None:
-        """Show the commanded state until the lock reports its real one.
+    async def _raykube_command(self, state: str) -> None:
+        """Send lock / unlock and show locking / unlocking until confirmed.
 
-        The synthetic state DP is updated too: otherwise any unrelated
-        report arriving before DP47 (e.g. the record DP sent on connect)
-        would make update_device_state() restore the pre-command state.
+        The shown state only changes when the lock reports it (DP118 from
+        the device, newer than the command).
         """
-        self._device.datapoints._update_from_device(
-            self._mapping.dp_id,
-            time.time(),
-            0,
-            TuyaBLEDataPointType.DT_ENUM,
-            1 if state == LockState.UNLOCKED else 0,
-            source=SOURCE_HOME_ASSISTANT,
+        kind = COMMAND_UNLOCK if state == LockState.UNLOCKED else COMMAND_LOCK
+        dp_id = self._mapping.dp_id_unlock if kind == COMMAND_UNLOCK else self._mapping.dp_id_lock
+        datapoint = self._device.datapoints.get_or_create(
+            dp_id, TuyaBLEDataPointType.DT_BOOL, False
         )
-        self._current_state = state
-        self._commanded = False
-        self._isjammed = False
+        since = time.time()
+        self._cancel_confirm_timeout()
+        self._target_state = state
+        self._pending_target = state
+        self._pending_since = since
+        self._last_command = kind
+        self._command_confirmed = None
         self._update_attrs()
         self.async_write_ha_state()
+        try:
+            await get_command_guard(self._device).run(
+                kind, lambda: datapoint.set_value(True)
+            )
+        except BaseException:
+            if self._pending_since == since:  # not replaced by a newer command
+                self._pending_target = None
+                self._command_confirmed = False
+                self._update_attrs()
+                self.async_write_ha_state()
+            raise
+        if self._pending_since != since or self._pending_target is None:
+            return  # replaced, or the lock already reported its state
+        self._unsub_confirm_timeout = async_call_later(
+            self._hass, RAYKUBE_CONFIRM_TIMEOUT, self._async_confirm_timeout
+        )
         self._schedule_state_refresh()
+
+    @callback
+    def _cancel_confirm_timeout(self) -> None:
+        if self._unsub_confirm_timeout is not None:
+            self._unsub_confirm_timeout()
+            self._unsub_confirm_timeout = None
+
+    async def _async_confirm_timeout(self, _now: datetime) -> None:
+        self._unsub_confirm_timeout = None
+        if self._pending_target is None:
+            return
+        _LOGGER.warning(
+            "%s: the lock did not report its state after %s; showing the last reported state",
+            self._device.address,
+            self._last_command,
+        )
+        self._pending_target = None
+        self._command_confirmed = False
+        self._update_attrs()
+        self.async_write_ha_state()
+
+    async def async_calibrate(self) -> None:
+        """tuya_local_ble.calibrate: the card's confirmed calibration."""
+        config = get_raykube_config(self._device)
+        dp_id = config.dp("special_function") if config is not None else None
+        if not dp_id:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN, translation_key="calibration_unsupported"
+            )
+        try:
+            await async_calibrate(self._device, dp_id, config.calibrate_value)
+        finally:
+            self.async_write_ha_state()  # calibration time / cooldown attributes
 
     @callback
     def _schedule_state_refresh(self) -> None:
@@ -418,6 +529,9 @@ class TuyaBLELock(TuyaBLEEntity, LockEntity):
 
     def update_device_state(self):
         datapoint = self._device.datapoints[self._mapping.dp_id]
+        if self._is_raykube:
+            self._update_raykube_state(datapoint)
+            return
         if datapoint:
             is_set = bool(datapoint.value)
             if self._mapping.value_means_locked:
@@ -432,6 +546,23 @@ class TuyaBLELock(TuyaBLEEntity, LockEntity):
                 else:
                     self._commanded = False
                     self._isjammed = False
+
+    def _update_raykube_state(self, datapoint) -> None:
+        # Only what the lock itself reported counts as its state.
+        if datapoint is None or datapoint.source != SOURCE_DEVICE:
+            return
+        self._current_state = LockState.UNLOCKED if datapoint.value else LockState.LOCKED
+        if datapoint.timestamp < self._pending_since:
+            return  # reported before the last command
+        target = self._target_state
+        if self._current_state != target:
+            # A report of the old state (e.g. sent on connect) does not end
+            # the wait; the confirmation timeout does.
+            return
+        self._command_confirmed = True
+        if self._pending_target is not None:
+            self._pending_target = None
+            self._cancel_confirm_timeout()
 
     @callback
     def _handle_coordinator_update(self) -> None:
@@ -483,3 +614,6 @@ async def async_setup_entry(
                 )
             )
     async_add_entities(entities)
+    if any(entity._is_raykube for entity in entities):
+        platform = entity_platform.async_get_current_platform()
+        platform.async_register_entity_service(SERVICE_CALIBRATE, {}, "async_calibrate")

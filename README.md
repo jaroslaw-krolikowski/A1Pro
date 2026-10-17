@@ -13,7 +13,7 @@ po Bluetooth, bez chmury i bramki.
 Encje zamka:
 
 - otwieranie i zamykanie (`lock`),
-- kalibracja (przycisk),
+- kalibracja (z karty, z potwierdzeniem; przycisk domyślnie wyłączony),
 - wyciszenie i odciszenie (przełącznik),
 - poziom głośności (select),
 - automatyczne zamykanie i jego czas (przełącznik + liczba w sekundach),
@@ -41,7 +41,7 @@ over Bluetooth, with no cloud and no gateway.
 Lock entities:
 
 - lock and unlock (`lock`),
-- calibration (button),
+- calibration (from the card, with confirmation; the button is disabled by default),
 - mute and unmute (switch),
 - volume level (select),
 - auto-lock and its delay (switch + number in seconds),

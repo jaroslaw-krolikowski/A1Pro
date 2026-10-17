@@ -17,6 +17,6 @@
   "requirements": ["pycryptodome==3.20.0"],
   "documentation": "https://github.com/jaroslaw-krolikowski/A1Pro",
   "iot_class": "local_push",
-  "version": "0.4.3",
+  "version": "0.5.0",
   "issue_tracker": "https://github.com/jaroslaw-krolikowski/A1Pro/issues"
 }

@@ -1,4 +1,11 @@
 {
+  "exceptions": {
+    "command_timeout": "The lock did not take the command within {seconds} s. The command was dropped and will not run later. Check the lock on site.",
+    "command_pending": "The previous command ({command}) is still on its way to the lock. Wait for it to finish.",
+    "command_replaced": "Dropped: a lock command was sent before this one reached the lock.",
+    "calibration_cooldown": "Calibration was started less than 2 minutes ago. Try again in {seconds} s.",
+    "calibration_unsupported": "This lock has no calibration."
+  },
     "config": {
       "abort": {
         "no_unconfigured_devices": "Home Assistant Bluetooth does not see any unconfigured Tuya BLE device. Check that Bluetooth works in Home Assistant (adapter passed through to the VM or an ESPHome Bluetooth proxy), that the device is in range and that the Tuya app is not connected to it.",
@@ -41,6 +48,10 @@
     }
   },
   "services": {
+    "calibrate": {
+      "name": "Calibrate lock",
+      "description": "Starts the lock calibration: the motor moves the bolt and stores its end positions. Only on site; afterwards check that lock and unlock turn the right way. Allowed once every 2 minutes."
+    },
     "set_datapoint": {
       "name": "Set datapoint",
       "description": "Write a raw Tuya datapoint to the device (advanced).",

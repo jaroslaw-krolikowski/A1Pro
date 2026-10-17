@@ -74,53 +74,91 @@ async def make_lock(hass: HomeAssistant):
 
 
 def state(entity) -> str:
+    """Last known lock position (what is_locked reports)."""
     return LockState.LOCKED if entity.is_locked else LockState.UNLOCKED
 
 
-def test_unrelated_report_after_command_does_not_restore_stale_state():
+def confirm_delays(refresh: float = 0.2, timeout: float = 0.6):
+    return patch.multiple(
+        lock_platform,
+        RAYKUBE_STATE_REFRESH_DELAY=refresh,
+        RAYKUBE_CONFIRM_TIMEOUT=timeout,
+    )
+
+
+def test_unlocking_is_shown_until_the_lock_reports_it():
     async def scenario():
         hass = HomeAssistant("/tmp")
         frame.async_setup(hass)
         await hass.async_start()
-        with patch.object(lock_platform, "RAYKUBE_STATE_REFRESH_DELAY", 0.2, create=True):
+        with confirm_delays():
             device, entity, physical, sent = await make_lock(hass)
             device._parse_datapoints_v4(dp47_report(False))
-            assert state(entity) == LockState.LOCKED
+            assert entity.state == LockState.LOCKED
 
-            physical["unlocked"] = True  # opened by hand, no report reaches HA
+            physical["unlocked"] = True
             await entity.async_unlock()
-            assert state(entity) == LockState.UNLOCKED
+            assert entity.state == LockState.UNLOCKING  # not "unlocked" yet
 
             device._parse_datapoints_v4(RECORD_REPORT)  # unrelated report
-            assert state(entity) == LockState.UNLOCKED
+            assert entity.state == LockState.UNLOCKING
 
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.3)
             assert "status" in sent  # real state requested after the command
-            assert state(entity) == LockState.UNLOCKED
+            assert entity.state == LockState.UNLOCKED
+            assert entity.extra_state_attributes["command_confirmed"] is True
         await hass.async_stop(force=True)
 
     asyncio.run(scenario())
 
 
-def test_refresh_after_command_shows_real_state():
+def test_lock_that_did_not_move_is_never_shown_locked():
+    """17.10: HA sent lock, the bolt stayed open, HA showed "locked"."""
     async def scenario():
         hass = HomeAssistant("/tmp")
         frame.async_setup(hass)
         await hass.async_start()
-        with patch.object(lock_platform, "RAYKUBE_STATE_REFRESH_DELAY", 0.2, create=True):
+        with confirm_delays():
             device, entity, physical, sent = await make_lock(hass)
-            device._parse_datapoints_v4(dp47_report(True))
-            assert state(entity) == LockState.UNLOCKED
-
-            # HA sends "lock", but the lock ends up unlocked (e.g. someone
-            # turned it back by hand straight away).
-            await entity.async_lock()
-            assert state(entity) == LockState.LOCKED
             physical["unlocked"] = True
+            device._parse_datapoints_v4(dp47_report(True))
+            assert entity.state == LockState.UNLOCKED
 
-            await asyncio.sleep(0.5)
+            await entity.async_lock()  # the lock takes it, the bolt stays open
+            assert entity.state == LockState.LOCKING
+            await asyncio.sleep(0.3)
             assert sent.count("status") == 1
-            assert state(entity) == LockState.UNLOCKED  # real state wins
+            assert entity.state == LockState.LOCKING  # the old state is no confirmation
+
+            await asyncio.sleep(0.5)  # no confirmation: back to what the lock said
+            assert entity.state == LockState.UNLOCKED
+            attrs = entity.extra_state_attributes
+            assert attrs["last_command"] == "lock" and attrs["command_confirmed"] is False
+
+            physical["unlocked"] = False  # it locks later after all
+            device._parse_datapoints_v4(dp47_report(False))
+            assert entity.state == LockState.LOCKED
+            assert entity.extra_state_attributes["command_confirmed"] is True
+        await hass.async_stop(force=True)
+
+    asyncio.run(scenario())
+
+
+def test_unknown_state_stays_unknown_without_a_report():
+    async def scenario():
+        hass = HomeAssistant("/tmp")
+        frame.async_setup(hass)
+        await hass.async_start()
+        with confirm_delays():
+            device, entity, physical, sent = await make_lock(hass)
+
+            async def silent_update():
+                sent.append("status")
+
+            device.update = silent_update
+            await entity.async_lock()
+            await asyncio.sleep(0.9)
+            assert entity.is_locked is None and entity.state is None
         await hass.async_stop(force=True)
 
     asyncio.run(scenario())
@@ -131,15 +169,17 @@ def test_quick_commands_refresh_once_after_the_last_one():
         hass = HomeAssistant("/tmp")
         frame.async_setup(hass)
         await hass.async_start()
-        with patch.object(lock_platform, "RAYKUBE_STATE_REFRESH_DELAY", 0.3, create=True):
+        with confirm_delays(refresh=0.3, timeout=1.0):
             device, entity, physical, sent = await make_lock(hass)
             device._parse_datapoints_v4(dp47_report(False))
+            physical["unlocked"] = True
             await entity.async_unlock()
             await asyncio.sleep(0.1)
+            physical["unlocked"] = False
             await entity.async_lock()
             await asyncio.sleep(0.6)
             assert sent.count("status") == 1
-            assert state(entity) == LockState.LOCKED
+            assert entity.state == LockState.LOCKED
         await hass.async_stop(force=True)
 
     asyncio.run(scenario())

@@ -14,7 +14,7 @@ Ten fork [ShonP40/Tuya-BLE](https://github.com/ShonP40/Tuya-BLE) dodaje do zamk�
 | switch: Wyciszenie / Mute | wycisz / odcisz | 31 | enum | j.w. Odciszenie przywraca ostatni poziom |
 | switch: Automatyczne zamykanie / Auto Lock | auto-zamykanie po otwarciu | 33 | bool | DP z chmury Tuya i snapshotu BLE |
 | number: Czas automatycznego zamknięcia / Auto lock delay | opóźnienie auto-zamknięcia (s), zakres 1–1800 | 36 | value | DP z chmury Tuya i snapshotu BLE |
-| button: Kalibracja / Calibrate | kalibracja zamka | 68 = `function1` | enum | potwierdzone: kalibracja w aplikacji raportuje DP68 = `function1` (`hc7n0urm`) |
+| button: Kalibracja / Calibrate | kalibracja zamka, **domyślnie wyłączona**, bez potwierdzenia; zamiast niej karta (zob. [Bezpieczeństwo komend](#bezpieczeństwo-komend)) | 68 = `function1` | enum | potwierdzone: kalibracja w aplikacji raportuje DP68 = `function1` (`hc7n0urm`) |
 | button: Odśwież stan / Refresh status | łączy się z zamkiem i pobiera pełny stan | – | – | – |
 | sensor: Datapointy / Datapoints | wszystkie DP z nazwami, źródłem i ostatnimi zmianami (atrybuty) | – | – | diagnostyka, zob. [Diagnostyka](#diagnostyka) |
 | sensor: Połączenie / Connection | stan połączenia BLE, ostatni błąd, ostatnie ramki | – | – | diagnostyka |
@@ -130,6 +130,10 @@ Standardowego okna zamka w HA (z dużym przełącznikiem) integracja zmienić ni
 
 - **Tylko przycisk** po prawej zamyka albo otwiera zamek. Pokazuje, co zrobi: **Otwórz** przy zamkniętym,
   **Zamknij** przy otwartym. Do czasu potwierdzenia przez zamek kręci się wskaźnik.
+  - **Zamknąć można zawsze**: gdy otwarcie jest jeszcze w drodze, przycisk zmienia się na **Zamknij**
+    i anuluje to otwarcie.
+  - Gdy zamek nie potwierdzi komendy, karta pokazuje stan zgłoszony przez zamek wcześniej
+    i ostrzeżenie *niepotwierdzone*.
   - **Otwarcie wymaga potwierdzenia.** Pierwsze stuknięcie zmienia przycisk na czerwony **Potwierdź**,
     drzwi otwiera dopiero drugie stuknięcie w ciągu kilku sekund. Zamykanie działa od razu.
     Potwierdzenie wyłącza `confirm_unlock: false`.
@@ -142,7 +146,7 @@ Standardowego okna zamka w HA (z dużym przełącznikiem) integracja zmienić ni
     auto-zamknięcie), *z Home Assistant* albo *automatyzacja*;
   - bateria, auto-zamykanie i jego czas, tryb uzbrojenia, opcjonalnie siła sygnału;
   - ustawienia: tryb uzbrojenia, auto-zamykanie, czas, wyciszenie, odświeżenie stanu, kalibracja
-    (z potwierdzeniem);
+    (z potwierdzeniem i ostrzeżeniem, najwyżej raz na 2 minuty);
   - ostatnie zdarzenia z 48 h.
 
 Dodanie: *Edytuj dashboard → Dodaj kartę →* wyszukaj **Raykube Lock**. Albo w YAML:
@@ -160,7 +164,7 @@ Karta dopasowuje się do jasnego i ciemnego motywu HA.
 
 Pozostałe encje zamka (bateria, auto-zamykanie, wyciszenie, przyciski) karta znajduje sama. Każdą można też
 wskazać ręcznie: `battery_entity`, `auto_lock_entity`, `auto_lock_time_entity`, `mute_entity`,
-`refresh_entity`, `calibrate_entity`, `signal_entity`.
+`refresh_entity`, `signal_entity`.
 
 Ustawienia, których zamek jeszcze nie przesłał, karta pokazuje jako *Nieznany* (przerywany przełącznik,
 puste pole czasu). Przycisk **Odśwież** pobiera je z zamka.
@@ -289,6 +293,33 @@ zmiana zgłoszona przez sam zamek nie ma przypisanego użytkownika ani automatyz
    - sprawdź w *Ustawienia → Automatyzacje i sceny* → automatyzacja → **⋮ → Ślady**, czy się uruchomiła.
      Jeśli nie, HA nie dostał zmiany stanu, więc sprawdź krok 1 i zasięg Bluetooth.
    - Jeśli automatyzacja się uruchomiła, problem jest po stronie telefonu. Sprawdź kroki 2 i 3.
+
+## Bezpieczeństwo komend
+
+Zasady wprowadzone po incydencie z 17.10.2026. Komendy czekały wtedy w kolejce kilka minut,
+HA pokazał „zamknięte”, chociaż rygiel się nie ruszył, a kalibracje wykonały się z opóźnieniem.
+
+- **Komenda nie wykona się później.** Jeśli nie dotrze do zamka w 20 s (zamknięcie: 45 s), jest
+  anulowana i HA pokazuje błąd. Nic nie czeka w kolejce i nie wykonuje się po kilku minutach.
+- **Jedna komenda naraz.** Otwarcie i kalibracja są odrzucane, dopóki poprzednia komenda jest w drodze.
+- **Zamknąć można zawsze.** Zamknięcie anuluje otwarcie albo kalibrację, które jeszcze nie dotarły do zamka.
+  Nie blokuje go ani trwająca komenda, ani blokada kalibracji.
+- **Stan tylko z zamka.** Po komendzie encja pokazuje *Zamykanie…* / *Otwieranie…*. *Zamknięty* albo
+  *Otwarty* pokaże dopiero wtedy, gdy zgłosi to zamek. Bez zgłoszenia w 45 s encja wraca do ostatniego
+  stanu zgłoszonego przez zamek (albo *Nieznany*). Atrybut `command_confirmed: false` oznacza wtedy,
+  że ostatniej komendy (`last_command`) zamek nie potwierdził.
+- **Kalibracja tylko świadomie.**
+  - Przycisk *Kalibracja* na stronie urządzenia jest domyślnie wyłączony.
+  - Kalibrację uruchamia karta: dwa stuknięcia i ostrzeżenie. Pod spodem jest usługa
+    `tuya_local_ble.calibrate` z encją zamka.
+  - Kolejna kalibracja jest możliwa po 2 minutach.
+
+  Kalibracja porusza ryglem i zapamiętuje jego skrajne położenia; zamek może się na końcu zamknąć.
+  Kalibracja w złym położeniu odwraca zamykanie i otwieranie. Wtedy auto-zamknięcie *otwiera* drzwi.
+  Uruchamiaj ją tylko przy drzwiach, a potem sprawdź na miejscu oba kierunki.
+
+> W instalacjach sprzed wersji 0.5.0 przycisk *Kalibracja* zostaje włączony. Wyłącz go ręcznie:
+> *Ustawienia → Urządzenia → zamek → Kalibracja → ⚙ → Włączona: wył.*
 
 ## Diagnostyka
 
@@ -436,8 +467,8 @@ Identyfikatory encji (`lock.twoj_zamek` itd.) podmień na swoje z ustawień urz�
   Stan ustawień odświeża się przy każdym połączeniu (snapshot), przyciskiem **Odśwież stan**
   albo na stałe w trybie połączenia *Stałe połączenie (24/7)* (wtedy lepiej użyć ESPHome BLE proxy).
 - Aplikacja Tuya/Smart Life i HA nie mogą być połączone z zamkiem jednocześnie.
-- Po komendzie zamknij/otwórz HA od razu pokazuje stan docelowy, a ok. 12 s później odpytuje zamek
-  i pokazuje jego faktyczny stan. Przydaje się to, gdy zamek był chwilę wcześniej przekręcony ręcznie.
+- Po komendzie zamknij/otwórz HA pokazuje *Zamykanie…* / *Otwieranie…*, dopóki zamek nie zgłosi
+  swojego stanu (ok. 12 s później HA sam go odpytuje). Szczegóły w [Bezpieczeństwo komend](#bezpieczeństwo-komend).
 - Na części egzemplarzy z firmware 5.6 `ble_unlock_check` zmienia się po każdym otwarciu z aplikacji
   i otwieranie z HA przestaje działać. Zobacz [ShonP40/Tuya-BLE#17](https://github.com/ShonP40/Tuya-BLE/issues/17).
 - Encja *Kierunek zamka* (DP48) pochodzi z upstreamu. W profilu tuya-local kierunek

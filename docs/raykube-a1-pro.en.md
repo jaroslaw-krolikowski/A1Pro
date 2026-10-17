@@ -14,7 +14,7 @@ Raykube locks (`jtmspro`, `hc7n0urm` and `rlyxv7pe`) to Home Assistant.
 | switch: Mute / Wyciszenie | mute / unmute | 31 | enum | same; unmuting restores the last level |
 | switch: Auto Lock / Automatyczne zamykanie | lock automatically after unlocking | 33 | bool | Tuya cloud DP and BLE snapshot |
 | number: Auto lock delay / Czas automatycznego zamknięcia | auto-lock delay (s), range 1–1800 | 36 | value | Tuya cloud DP and BLE snapshot |
-| button: Calibrate / Kalibracja | lock calibration | 68 = `function1` | enum | confirmed: calibrating in the app reports DP68 = `function1` (`hc7n0urm`) |
+| button: Calibrate / Kalibracja | lock calibration, **disabled by default**, no confirmation; use the card instead (see [Command safety](#command-safety)) | 68 = `function1` | enum | confirmed: calibrating in the app reports DP68 = `function1` (`hc7n0urm`) |
 | button: Refresh status / Odśwież stan | connects to the lock and reads its full state | – | – | – |
 | sensor: Datapoints / Datapointy | every DP with its name, source and recent changes (attributes) | – | – | diagnostics, see [Diagnostics](#diagnostics) |
 | sensor: Connection / Połączenie | BLE connection state, last error, last frames | – | – | diagnostics |
@@ -134,6 +134,10 @@ replaces it.
 
 - **Only the button** on the right locks or unlocks. It shows what it will do: **Unlock** when locked,
   **Lock** when unlocked. A spinner runs until the lock confirms.
+  - **Locking is always possible**: while an unlock is still on its way the button turns into **Lock**
+    and drops that unlock.
+  - When the lock does not confirm a command, the card shows the state the lock reported before
+    with an *unconfirmed* warning.
   - **Unlocking asks for confirmation.** The first tap turns the button into a red **Confirm**; the door
     unlocks only on a second tap within a few seconds. Locking works right away.
     `confirm_unlock: false` turns the confirmation off.
@@ -145,7 +149,8 @@ replaces it.
   - the state and the time of the last change with where it came from: *at the lock* (thumb turn, key,
     app, auto-lock), *from Home Assistant* or *automation*;
   - battery, auto-lock and its delay, arming mode, optionally signal strength;
-  - settings: arming mode, auto-lock, delay, mute, refresh status, calibration (with confirmation);
+  - settings: arming mode, auto-lock, delay, mute, refresh status, calibration (with confirmation and a
+    warning, at most once every 2 minutes);
   - events from the last 48 h.
 
 Adding it: *Edit dashboard → Add card →* search for **Raykube Lock**. Or in YAML:
@@ -164,7 +169,7 @@ It adapts to the light and dark HA themes.
 
 The card finds the other entities of the lock (battery, auto-lock, mute, buttons) by itself. Each of them
 can also be set by hand: `battery_entity`, `auto_lock_entity`, `auto_lock_time_entity`, `mute_entity`,
-`refresh_entity`, `calibrate_entity`, `signal_entity`.
+`refresh_entity`, `signal_entity`.
 
 Settings the lock has not reported yet are shown as *Unknown* (dashed switch, empty delay field).
 The **Refresh** button reads them from the lock.
@@ -294,6 +299,33 @@ state change: a change reported by the lock itself has no user or automation att
    - check *Settings → Automations & scenes* → the automation → **⋮ → Traces** to see whether it ran.
      If it did not, HA never got the state change: check step 1 and the Bluetooth range.
    - If the automation ran, the problem is on the phone side. Check steps 2 and 3.
+
+## Command safety
+
+Rules added after the incident of 17.10.2026. That day commands waited in a queue for minutes,
+HA showed "locked" although the bolt had not moved, and calibrations ran with a delay.
+
+- **A command never runs late.** If it does not reach the lock within 20 s (lock: 45 s), it is dropped
+  and HA shows an error. Nothing waits in a queue to run minutes later.
+- **One command at a time.** Unlock and calibration are refused while another command is on its way.
+- **Locking is always possible.** Lock drops an unlock or calibration that has not reached the lock yet.
+  Neither a pending command nor the calibration cooldown blocks it.
+- **State only from the lock.** After a command the entity shows *Locking…* / *Unlocking…*. It shows
+  *Locked* or *Unlocked* only once the lock reports it. Without a report within 45 s it goes back to the
+  last state the lock reported (or *Unknown*). The attribute `command_confirmed: false` then means that
+  the lock did not confirm the last command (`last_command`).
+- **Calibration only on purpose.**
+  - The *Calibrate* button on the device page is disabled by default.
+  - Calibration is started from the card: two taps and a warning. It calls the
+    `tuya_local_ble.calibrate` action on the lock entity.
+  - The next calibration is possible after 2 minutes.
+
+  Calibration moves the bolt and stores its end positions; the lock may end up locked. A calibration
+  in the wrong position reverses locking and unlocking, and then auto-lock *unlocks* the door.
+  Start it only at the door, then check both directions on site.
+
+> On installs from before 0.5.0 the *Calibrate* button stays enabled. Disable it by hand:
+> *Settings → Devices → the lock → Calibrate → ⚙ → Enabled: off*.
 
 ## Diagnostics
 
@@ -442,8 +474,8 @@ Replace the entity ids (`lock.your_lock` etc.) with your own from the device pag
   Settings are refreshed on every connection (snapshot), with **Refresh status**, or permanently with
   the *Permanent connection (24/7)* connection mode (an ESPHome BLE proxy is recommended then).
 - The Tuya/Smart Life app and HA cannot be connected to the lock at the same time.
-- After a lock/unlock command HA shows the target state right away and about 12 s later queries the lock
-  and shows its real state. This helps when the lock was turned by hand just before.
+- After a lock/unlock command HA shows *Locking…* / *Unlocking…* until the lock reports its state
+  (HA queries it about 12 s later). See [Command safety](#command-safety).
 - On some units with firmware 5.6 `ble_unlock_check` changes after every unlock from the app, and
   unlocking from HA stops working. See [ShonP40/Tuya-BLE#17](https://github.com/ShonP40/Tuya-BLE/issues/17).
 - The *Lock Direction* entity (DP48) comes from upstream. In the tuya-local profile the direction of these

@@ -41,3 +41,14 @@ class TuyaBLEDeviceError(TuyaBLEError):
             super().__init__(code)
         else:
             super().__init__(("BLE device returned error code %s") % (code))
+
+
+class TuyaBLECommandTimeoutError(TuyaBLEError):
+    """Raised when a command did not reach the device before its deadline.
+
+    The command is dropped, so it can never run minutes later.
+    """
+
+    def __init__(self, deadline: float) -> None:
+        self.deadline = deadline
+        super().__init__(f"The device did not take the command within {deadline:g} s")

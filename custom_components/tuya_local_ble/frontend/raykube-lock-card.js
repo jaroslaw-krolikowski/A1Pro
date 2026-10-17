@@ -6,6 +6,12 @@
  * opens a panel with lock/unlock, battery, the time and source of the last
  * change, settings, calibration and recent history.
  *
+ * Locking is always possible: while an unlock is on its way the button
+ * locks. "Locking…" / "Unlocking…" stay until the lock reports its state;
+ * when it does not, the card says so instead of showing the commanded state.
+ * Calibration (tuya_local_ble.calibrate) asks for confirmation, warns what it
+ * does and is available once every 2 minutes.
+ *
  *   type: custom:raykube-lock-card
  *   entity: lock.raykube_a1_ultra_d9f494_zamek
  *   name: Drzwi wejściowe                          # optional
@@ -14,8 +20,7 @@
  *
  * Related entities of the same device are found by translation key; any of
  * them can be overridden with battery_entity, auto_lock_entity,
- * auto_lock_time_entity, mute_entity, refresh_entity, calibrate_entity,
- * signal_entity.
+ * auto_lock_time_entity, mute_entity, refresh_entity, signal_entity.
  *
  * Chip: a small name + state badge for floor plans (picture-elements) and
  * compact dashboards. A tap opens the same details panel; it never locks or
@@ -28,7 +33,7 @@
  * Look follows shadcn/ui; icons are Lucide (https://lucide.dev, ISC license).
  */
 
-const CARD_VERSION = "1.5.0";
+const CARD_VERSION = "1.6.0";
 const HOLD_MS = 500;
 const CONFIRM_MS = 4000;
 const PENDING_TIMEOUT_MS = 20000;
@@ -68,6 +73,11 @@ const STRINGS = {
     calibrate: "Kalibracja",
     calibrate_action: "Uruchom",
     confirm_calibrate: "Potwierdź",
+    calibrate_warning: "Kalibracja porusza ryglem i zapamiętuje jego skrajne położenia, a zamek może się na końcu zamknąć. Uruchamiaj ją tylko przy drzwiach i potem sprawdź, czy zamykanie i otwieranie działają we właściwą stronę.",
+    calibrate_wait: "Za {s} s",
+    unconfirmed_lock: "Zamek nie potwierdził zamknięcia. Pokazany stan zgłosił zamek wcześniej. Sprawdź na miejscu.",
+    unconfirmed_unlock: "Zamek nie potwierdził otwarcia. Pokazany stan zgłosił zamek wcześniej. Sprawdź na miejscu.",
+    unconfirmed_short: "niepotwierdzone",
     settings: "Ustawienia",
     history: "Ostatnie zdarzenia",
     no_history: "Brak zdarzeń z ostatnich 48 h",
@@ -117,6 +127,11 @@ const STRINGS = {
     calibrate: "Calibration",
     calibrate_action: "Start",
     confirm_calibrate: "Confirm",
+    calibrate_warning: "Calibration moves the bolt and stores its end positions, and the lock may end up locked. Start it only at the door, then check that locking and unlocking turn the right way.",
+    calibrate_wait: "In {s} s",
+    unconfirmed_lock: "The lock did not confirm locking. The state shown is the one the lock reported before. Check on site.",
+    unconfirmed_unlock: "The lock did not confirm unlocking. The state shown is the one the lock reported before. Check on site.",
+    unconfirmed_short: "unconfirmed",
     settings: "Settings",
     history: "Recent events",
     no_history: "No events in the last 48 h",
@@ -141,7 +156,6 @@ const RELATED_KEYS = {
   auto_lock_time: "auto_lock_time",
   mute: "mute",
   refresh: "refresh_status",
-  calibrate: "calibrate",
   signal: "signal_strength",
 };
 
@@ -303,6 +317,12 @@ function toggleTarget(state) {
   return state === "locked" ? "unlock" : "lock";
 }
 
+/** "lock" / "unlock" when the lock did not confirm the last command. */
+function unconfirmed(stateObj) {
+  const a = stateObj?.attributes;
+  return a && a.command_confirmed === false ? a.last_command : null;
+}
+
 // shadcn/ui-like tokens mapped onto the Home Assistant theme.
 const SHARED_STYLE = `
   :host {
@@ -437,16 +457,20 @@ class RaykubeLockCard extends HTMLElement {
     return related;
   }
 
-  /** Command sent from the card that the lock has not confirmed yet. */
+  /** Command the lock has not confirmed yet (sent from this card or reported by HA). */
   get pending() {
-    return this._pending ? this._pending.action : null;
+    if (this._pending) return this._pending.action;
+    const state = this._hass?.states[this._config.entity]?.state;
+    return state === "locking" ? "lock" : state === "unlocking" ? "unlock" : null;
   }
 
   _settlePending() {
     if (!this._pending) return;
     const state = this._hass.states[this._config.entity]?.state;
     const done = this._pending.action === "lock" ? state === "locked" : state === "unlocked" || state === "open";
-    if (done || state === "jammed" || Date.now() - this._pending.since > PENDING_TIMEOUT_MS) {
+    // Once HA shows locking / unlocking it tracks the command itself.
+    const tracked = state === "locking" || state === "unlocking";
+    if (done || tracked || state === "jammed" || Date.now() - this._pending.since > PENDING_TIMEOUT_MS) {
       this._pending = null;
       clearTimeout(this._pendingTimer);
     }
@@ -473,7 +497,12 @@ class RaykubeLockCard extends HTMLElement {
       this._rerender();
     }, PENDING_TIMEOUT_MS);
     this._haptic(action === "unlock" ? "success" : "light");
-    this._hass.callService("lock", action, { entity_id: this._config.entity });
+    const pending = this._pending;
+    Promise.resolve(this._hass.callService("lock", action, { entity_id: this._config.entity })).catch(() => {
+      // HA shows the error; stop showing the command as on its way.
+      if (this._pending === pending) this._pending = null;
+      this._rerender();
+    });
     this._rerender();
     return true;
   }
@@ -523,6 +552,7 @@ class RaykubeLockCard extends HTMLElement {
           }
           .meta .state { color: var(--rk-tone); font-weight: 500; }
           .meta .sep { opacity: .5; }
+          .meta .warn { display: inline-flex; align-items: center; gap: 3px; color: var(--rk-alert); }
           .action { min-width: 92px; }
           /* A tap on the disabled button must not fall through and open the panel. */
           .action:disabled { pointer-events: auto; cursor: default; }
@@ -554,6 +584,9 @@ class RaykubeLockCard extends HTMLElement {
     const stateText = pending ? t[pending === "lock" ? "locking" : "unlocking"] : t[state] || state;
     const meta = [`<span class="state">${esc(stateText)}</span>`];
     if (stateObj && !pending) meta.push(`<span class="sep">·</span><span>${esc(shortAge(hass, stateObj.last_changed))}</span>`);
+    if (!pending && unconfirmed(stateObj)) {
+      meta.push(`<span class="sep">·</span><span class="warn">${icon("triangle-alert", 12)}${esc(t.unconfirmed_short)}</span>`);
+    }
     root.querySelector(".meta").innerHTML = meta.join("");
 
     const batteryId = this._related().battery;
@@ -570,12 +603,13 @@ class RaykubeLockCard extends HTMLElement {
     }
 
     const action = root.querySelector(".action");
-    const target = toggleTarget(state);
+    // While an unlock is on its way the button locks: locking is always possible.
+    const target = pending === "unlock" ? "lock" : toggleTarget(state);
     const confirming = this.confirming("tile");
     action.className = `btn btn-sm action ${confirming ? "btn-destructive" : target === "unlock" ? "btn-outline" : "btn-default"}`;
-    action.disabled = state === "unavailable" || Boolean(pending);
+    action.disabled = state === "unavailable" || pending === "lock";
     action.setAttribute("aria-label", confirming ? t.confirm_unlock : t[target]);
-    action.innerHTML = pending
+    action.innerHTML = pending === "lock"
       ? `${icon("loader", 14, "spin")}<span>${esc(t[pending])}</span>`
       : `${icon(target === "unlock" ? "lock-open" : "lock", 14)}<span>${esc(confirming ? t.confirm_short : t[target])}</span>`;
     const more = root.querySelector(".more");
@@ -647,8 +681,9 @@ class RaykubeLockCard extends HTMLElement {
 
   _tap() {
     const state = this._hass.states[this._config.entity]?.state;
-    if (!state || state === "unavailable" || this.pending) return;
-    this.command(toggleTarget(state), "tile");
+    const pending = this.pending;
+    if (!state || state === "unavailable" || pending === "lock") return;
+    this.command(pending === "unlock" ? "lock" : toggleTarget(state), "tile");
   }
 
   _haptic(type) {
@@ -690,6 +725,7 @@ class RaykubeLockPanel extends HTMLElement {
   disconnectedCallback() {
     document.removeEventListener("keydown", this._onKey);
     Object.values(this._confirm).forEach(clearTimeout);
+    clearTimeout(this._cooldownTimer);
   }
 
   update(hass, related, config, card) {
@@ -797,6 +833,7 @@ class RaykubeLockPanel extends HTMLElement {
         .switch[aria-checked=mixed]::after { transform: translateX(8px); background: var(--rk-muted-foreground); opacity: .4; box-shadow: none; }
         .switch:focus-visible { outline: 2px solid var(--rk-ring); outline-offset: 2px; }
         .row.hint { font-size: 13px; color: var(--rk-muted-foreground); padding-top: 10px; padding-bottom: 10px; }
+        .row.hint.warn, .badge.warn { color: var(--rk-alert); }
         .event { display: flex; align-items: center; gap: 12px; padding: 10px 14px; }
         .event + .event { border-top: 1px solid var(--rk-border); }
         .event .tint { width: 30px; height: 30px; border-radius: 8px; }
@@ -891,7 +928,7 @@ class RaykubeLockPanel extends HTMLElement {
         this._call("button", "press", r.refresh);
         break;
       case "calibrate":
-        if (this._confirmed("calibrate")) this._call("button", "press", r.calibrate);
+        if (this._confirmed("calibrate")) this._call("tuya_local_ble", "calibrate", r.lock);
         break;
       default:
         break;
@@ -918,7 +955,12 @@ class RaykubeLockPanel extends HTMLElement {
     status.querySelector(".state").textContent = pending
       ? t[pending === "lock" ? "locking" : "unlocking"] : t[state] || state;
     const badge = status.querySelector(".badge");
-    if (lock) {
+    const notConfirmed = !pending && unconfirmed(lock);
+    badge.classList.toggle("warn", Boolean(notConfirmed));
+    if (notConfirmed) {
+      badge.hidden = false;
+      badge.innerHTML = `${icon("triangle-alert", 12)}<span>${esc(t[`unconfirmed_${notConfirmed}`] || t.unconfirmed_short)}</span>`;
+    } else if (lock) {
       const ctx = lock.context || {};
       const [source, sourceIcon] = changeSource(t, ctx.user_id, ctx.parent_id);
       badge.hidden = false;
@@ -931,7 +973,8 @@ class RaykubeLockPanel extends HTMLElement {
     const target = toggleTarget(state);
     const lockBtn = root.querySelector('[data-act="lock"]');
     const unlockBtn = root.querySelector('[data-act="unlock"]');
-    lockBtn.disabled = unavailable;
+    // Locking is always possible; it also drops an unlock still on its way.
+    lockBtn.disabled = !lock || pending === "lock";
     unlockBtn.disabled = unavailable;
     lockBtn.className = `btn btn-lg ${target === "lock" ? "btn-default" : "btn-outline"}`;
     const confirming = this._card?.confirming("panel");
@@ -994,10 +1037,16 @@ class RaykubeLockPanel extends HTMLElement {
       rows.push(`<div class="row">${icon("refresh-cw", 18)}<span class="label">${esc(t.refresh)}</span>
         <button class="btn btn-secondary btn-sm" data-act="refresh">${esc(t.refresh_action)}</button></div>`);
     }
-    if (r.calibrate) {
+    if (hass.entities?.[r.lock]?.platform === "tuya_local_ble") {
       const armed = Boolean(this._confirm.calibrate);
+      const until = Date.parse(lock?.attributes?.calibration_blocked_until || "");
+      const wait = Number.isNaN(until) ? 0 : Math.ceil((until - Date.now()) / 1000);
+      clearTimeout(this._cooldownTimer);
+      if (wait > 0) this._cooldownTimer = setTimeout(() => this._refresh(), Math.min(wait, 10) * 1000);
+      const label = wait > 0 ? t.calibrate_wait.replace("{s}", wait) : armed ? t.confirm_calibrate : t.calibrate_action;
       rows.push(`<div class="row">${icon("crosshair", 18)}<span class="label">${esc(t.calibrate)}</span>
-        <button class="btn btn-sm ${armed ? "btn-destructive" : "btn-outline"}" data-act="calibrate">${esc(armed ? t.confirm_calibrate : t.calibrate_action)}</button></div>`);
+        <button class="btn btn-sm ${armed ? "btn-destructive" : "btn-outline"}" data-act="calibrate" ${wait > 0 ? "disabled" : ""}>${esc(label)}</button></div>`);
+      if (armed) rows.push(`<div class="row hint warn">${icon("triangle-alert", 18)}<span>${esc(t.calibrate_warning)}</span></div>`);
     }
     if (unknown && r.refresh) rows.push(`<div class="row hint">${icon("circle-help", 18)}<span>${esc(t.settings_unknown)}</span></div>`);
     const settings = root.querySelector(".settings");

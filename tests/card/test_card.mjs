@@ -16,13 +16,14 @@ await page.goto("file://" + path.join(here, "harness.html"));
 
 // Service calls only; logbook reloads (ws) on every state change are expected.
 const calls = () => page.evaluate(() => window.calls.splice(0).filter((c) => c[0] !== "ws"));
-const setLock = (state) => page.evaluate(([id, s]) => {
+const setLock = (state, attributes = {}) => page.evaluate(([id, s, attrs]) => {
   const hass = window.makeHass();
   hass.states[id] = { ...hass.states[id], state: s, last_changed: new Date().toISOString(),
+    attributes: { ...hass.states[id].attributes, ...attrs },
     context: { id: String(Math.random()), user_id: null, parent_id: null } };
   window.states = hass.states;
   window.card.hass = hass;
-}, [LOCK, state]);
+}, [LOCK, state, attributes]);
 const tile = page.locator("raykube-lock-card ha-card");
 const action = page.locator("raykube-lock-card .action");
 const tapTile = async () => {
@@ -70,12 +71,31 @@ if (shots) await page.locator("#host").screenshot({ path: path.join(shots, "1c-t
 await action.click();
 assert.deepEqual(await calls(), [["lock", "unlock", { entity_id: LOCK }]]);
 assert.equal(await page.locator("raykube-lock-card .meta .state").textContent(), "Otwieranie…");
-assert.equal(await action.isDisabled(), true);
+// Locking is always possible: while the unlock is on its way the button locks.
+assert.equal(await action.isDisabled(), false);
+assert.equal((await action.textContent()).trim(), "Zamknij");
 if (shots) await page.locator("#host").screenshot({ path: path.join(shots, "2-tile-pending.png") });
-await action.click({ force: true }); // ignored while pending
+await action.click();
+assert.deepEqual(await calls(), [["lock", "lock", { entity_id: LOCK }]]);
+assert.equal(await page.locator("raykube-lock-card .meta .state").textContent(), "Zamykanie…");
+assert.equal(await action.isDisabled(), true);
+await action.click({ force: true }); // a second lock is ignored while one is on its way
 assert.deepEqual(await calls(), []);
 assert.equal(await page.locator("raykube-lock-panel").count(), 0); // and does not open the panel
-await setLock("unlocked");
+await setLock("locking"); // HA tracks the command from here
+assert.equal(await page.locator("raykube-lock-card .meta .state").textContent(), "Zamykanie…");
+// The lock did not confirm: HA shows the last reported state and the card warns.
+await setLock("unlocked", { last_command: "lock", command_confirmed: false });
+assert.equal(await page.locator("raykube-lock-card .meta .state").textContent(), "Otwarty");
+assert.match(await page.locator("raykube-lock-card .meta .warn").textContent(), /niepotwierdzone/);
+if (shots) await page.locator("#host").screenshot({ path: path.join(shots, "2b-tile-unconfirmed.png") });
+await page.locator("raykube-lock-card .more").click();
+assert.match(await page.locator("raykube-lock-panel .badge").textContent(), /nie potwierdził zamknięcia/);
+await page.waitForTimeout(300);
+if (shots) await page.screenshot({ path: path.join(shots, "2c-panel-unconfirmed.png") });
+await page.locator('raykube-lock-panel [data-act="close"]').click();
+await setLock("unlocked", { command_confirmed: true });
+assert.equal(await page.locator("raykube-lock-card .meta .warn").count(), 0);
 assert.equal(await page.locator("raykube-lock-card .meta .state").textContent(), "Otwarty");
 assert.equal((await action.textContent()).trim(), "Zamknij");
 await page.waitForTimeout(300);
@@ -145,8 +165,19 @@ const calibrate = panel.locator('[data-act="calibrate"]');
 await calibrate.click();
 assert.deepEqual(await calls(), []);
 assert.equal((await calibrate.textContent()).trim(), "Potwierdź");
+assert.match(await panel.locator(".row.hint.warn").textContent(), /tylko przy drzwiach/);
+if (shots) await page.screenshot({ path: path.join(shots, "6-panel-calibrate-confirm.png") });
 await calibrate.click();
-assert.deepEqual(await calls(), [["button", "press", { entity_id: "button.calibrate" }]]);
+assert.deepEqual(await calls(), [["tuya_local_ble", "calibrate", { entity_id: LOCK }]]);
+assert.equal(await panel.locator(".row.hint.warn").count(), 0);
+// Cooldown reported by the lock entity: the button waits.
+await setLock("unlocked", { calibration_blocked_until: new Date(Date.now() + 90000).toISOString() });
+assert.equal(await calibrate.isDisabled(), true);
+assert.match((await calibrate.textContent()).trim(), /^Za (89|90) s$/);
+await calibrate.click({ force: true });
+assert.deepEqual(await calls(), []);
+await setLock("unlocked", { calibration_blocked_until: null });
+assert.equal(await calibrate.isDisabled(), false);
 
 // Close with the X
 await panel.locator('[data-act="close"]').click();

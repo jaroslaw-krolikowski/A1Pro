@@ -16,6 +16,7 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
+from .commands import async_calibrate
 from .const import DOMAIN
 from .devices import TuyaBLEData, TuyaBLEEntity, TuyaBLEProductInfo
 from .raykube import RaykubeConfig, get_raykube_config
@@ -170,7 +171,13 @@ class TuyaBLEButton(TuyaBLEEntity, ButtonEntity):
 
 
 class TuyaBLERaykubeCalibrateButton(TuyaBLEEntity, ButtonEntity):
-    """Start lock calibration (special_function = function1)."""
+    """Start lock calibration (special_function = function1).
+
+    Disabled by default: calibration moves the bolt and stores its end
+    positions, and a calibration in the wrong position reverses lock and
+    unlock. The card asks for confirmation (tuya_local_ble.calibrate on the
+    lock); this button has none, so it is for those who enable it on purpose.
+    """
 
     def __init__(
         self,
@@ -190,6 +197,7 @@ class TuyaBLERaykubeCalibrateButton(TuyaBLEEntity, ButtonEntity):
                 key="calibrate",
                 icon="mdi:tune-vertical",
                 entity_category=EntityCategory.CONFIG,
+                entity_registry_enabled_default=False,
             ),
         )
         self._dp_id = dp_id
@@ -200,11 +208,7 @@ class TuyaBLERaykubeCalibrateButton(TuyaBLEEntity, ButtonEntity):
         return self._config.sleepy or super().available
 
     async def async_press(self) -> None:
-        value = self._config.calibrate_value
-        datapoint = self._device.datapoints.get_or_create(
-            self._dp_id, TuyaBLEDataPointType.DT_ENUM, value
-        )
-        await datapoint.set_value(value)
+        await async_calibrate(self._device, self._dp_id, self._config.calibrate_value)
 
 
 class TuyaBLERaykubeRefreshButton(TuyaBLEEntity, ButtonEntity):
