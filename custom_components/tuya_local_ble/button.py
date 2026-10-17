@@ -173,10 +173,8 @@ class TuyaBLEButton(TuyaBLEEntity, ButtonEntity):
 class TuyaBLERaykubeCalibrateButton(TuyaBLEEntity, ButtonEntity):
     """Start lock calibration (special_function = function1).
 
-    Disabled by default: calibration moves the bolt and stores its end
-    positions, and a calibration in the wrong position reverses lock and
-    unlock. The card asks for confirmation (tuya_local_ble.calibrate on the
-    lock); this button has none, so it is for those who enable it on purpose.
+    Goes through the lock's command guard: once per 2 minutes, never while
+    another command is on its way, so repeated presses cannot queue up.
     """
 
     def __init__(
@@ -197,7 +195,6 @@ class TuyaBLERaykubeCalibrateButton(TuyaBLEEntity, ButtonEntity):
                 key="calibrate",
                 icon="mdi:tune-vertical",
                 entity_category=EntityCategory.CONFIG,
-                entity_registry_enabled_default=False,
             ),
         )
         self._dp_id = dp_id

@@ -210,3 +210,26 @@ def test_guard_is_per_device():
     b = TuyaBLEDevice(None, SimpleNamespace(address="AA:BB:CC:DD:EE:02", name="b"))
     assert commands.get_command_guard(a) is commands.get_command_guard(a)
     assert commands.get_command_guard(a) is not commands.get_command_guard(b)
+
+
+def test_calibrate_button_shares_the_cooldown_with_the_card():
+    from custom_components.tuya_local_ble import button
+    from custom_components.tuya_local_ble.raykube import get_raykube_config
+
+    async def scenario(hass):
+        device, entity, fake = await make_lock(hass)
+        config = get_raykube_config(device)
+        press = button.TuyaBLERaykubeCalibrateButton(
+            hass, entity.coordinator, device, get_device_product_info(device),
+            config.dp("special_function"), config,
+        )
+        assert press.entity_registry_enabled_default  # the button stays available
+        await press.async_press()
+        with pytest.raises(HomeAssistantError) as err:
+            await press.async_press()
+        assert err.value.translation_key == "calibration_cooldown"
+        with pytest.raises(HomeAssistantError):
+            await entity.async_calibrate()  # the card's action too
+        assert fake.sent.count(CALIBRATE) == 1
+
+    run(scenario)

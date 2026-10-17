@@ -14,7 +14,7 @@ Raykube locks (`jtmspro`, `hc7n0urm` and `rlyxv7pe`) to Home Assistant.
 | switch: Mute / Wyciszenie | mute / unmute | 31 | enum | same; unmuting restores the last level |
 | switch: Auto Lock / Automatyczne zamykanie | lock automatically after unlocking | 33 | bool | Tuya cloud DP and BLE snapshot |
 | number: Auto lock delay / Czas automatycznego zamknięcia | auto-lock delay (s), range 1–1800 | 36 | value | Tuya cloud DP and BLE snapshot |
-| button: Calibrate / Kalibracja | lock calibration, **disabled by default**, no confirmation; use the card instead (see [Command safety](#command-safety)) | 68 = `function1` | enum | confirmed: calibrating in the app reports DP68 = `function1` (`hc7n0urm`) |
+| button: Calibrate / Kalibracja | lock calibration, at most once every 2 minutes (see [Command safety](#command-safety)) | 68 = `function1` | enum | confirmed: calibrating in the app reports DP68 = `function1` (`hc7n0urm`) |
 | button: Refresh status / Odśwież stan | connects to the lock and reads its full state | – | – | – |
 | sensor: Datapoints / Datapointy | every DP with its name, source and recent changes (attributes) | – | – | diagnostics, see [Diagnostics](#diagnostics) |
 | sensor: Connection / Połączenie | BLE connection state, last error, last frames | – | – | diagnostics |
@@ -314,18 +314,14 @@ HA showed "locked" although the bolt had not moved, and calibrations ran with a 
   *Locked* or *Unlocked* only once the lock reports it. Without a report within 45 s it goes back to the
   last state the lock reported (or *Unknown*). The attribute `command_confirmed: false` then means that
   the lock did not confirm the last command (`last_command`).
-- **Calibration only on purpose.**
-  - The *Calibrate* button on the device page is disabled by default.
-  - Calibration is started from the card: two taps and a warning. It calls the
-    `tuya_local_ble.calibrate` action on the lock entity.
-  - The next calibration is possible after 2 minutes.
+- **Calibration once every 2 minutes.**
+  - The *Calibrate* button and the card (two taps and a warning; the `tuya_local_ble.calibrate`
+    action on the lock entity) send one calibration.
+  - Further presses within 2 minutes or during another command are refused, not queued.
 
   Calibration moves the bolt and stores its end positions; the lock may end up locked. A calibration
   in the wrong position reverses locking and unlocking, and then auto-lock *unlocks* the door.
   Start it only at the door, then check both directions on site.
-
-> On installs from before 0.5.0 the *Calibrate* button stays enabled. Disable it by hand:
-> *Settings → Devices → the lock → Calibrate → ⚙ → Enabled: off*.
 
 ## Diagnostics
 

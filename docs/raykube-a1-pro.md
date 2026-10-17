@@ -14,7 +14,7 @@ Ten fork [ShonP40/Tuya-BLE](https://github.com/ShonP40/Tuya-BLE) dodaje do zamk�
 | switch: Wyciszenie / Mute | wycisz / odcisz | 31 | enum | j.w. Odciszenie przywraca ostatni poziom |
 | switch: Automatyczne zamykanie / Auto Lock | auto-zamykanie po otwarciu | 33 | bool | DP z chmury Tuya i snapshotu BLE |
 | number: Czas automatycznego zamknięcia / Auto lock delay | opóźnienie auto-zamknięcia (s), zakres 1–1800 | 36 | value | DP z chmury Tuya i snapshotu BLE |
-| button: Kalibracja / Calibrate | kalibracja zamka, **domyślnie wyłączona**, bez potwierdzenia; zamiast niej karta (zob. [Bezpieczeństwo komend](#bezpieczeństwo-komend)) | 68 = `function1` | enum | potwierdzone: kalibracja w aplikacji raportuje DP68 = `function1` (`hc7n0urm`) |
+| button: Kalibracja / Calibrate | kalibracja zamka, najwyżej raz na 2 minuty (zob. [Bezpieczeństwo komend](#bezpieczeństwo-komend)) | 68 = `function1` | enum | potwierdzone: kalibracja w aplikacji raportuje DP68 = `function1` (`hc7n0urm`) |
 | button: Odśwież stan / Refresh status | łączy się z zamkiem i pobiera pełny stan | – | – | – |
 | sensor: Datapointy / Datapoints | wszystkie DP z nazwami, źródłem i ostatnimi zmianami (atrybuty) | – | – | diagnostyka, zob. [Diagnostyka](#diagnostyka) |
 | sensor: Połączenie / Connection | stan połączenia BLE, ostatni błąd, ostatnie ramki | – | – | diagnostyka |
@@ -308,18 +308,14 @@ HA pokazał „zamknięte”, chociaż rygiel się nie ruszył, a kalibracje wyk
   *Otwarty* pokaże dopiero wtedy, gdy zgłosi to zamek. Bez zgłoszenia w 45 s encja wraca do ostatniego
   stanu zgłoszonego przez zamek (albo *Nieznany*). Atrybut `command_confirmed: false` oznacza wtedy,
   że ostatniej komendy (`last_command`) zamek nie potwierdził.
-- **Kalibracja tylko świadomie.**
-  - Przycisk *Kalibracja* na stronie urządzenia jest domyślnie wyłączony.
-  - Kalibrację uruchamia karta: dwa stuknięcia i ostrzeżenie. Pod spodem jest usługa
-    `tuya_local_ble.calibrate` z encją zamka.
-  - Kolejna kalibracja jest możliwa po 2 minutach.
+- **Kalibracja raz na 2 minuty.**
+  - Przycisk *Kalibracja* i karta (dwa stuknięcia i ostrzeżenie; usługa `tuya_local_ble.calibrate`
+    z encją zamka) wysyłają jedną kalibrację.
+  - Kolejne wciśnięcia w ciągu 2 minut albo w czasie innej komendy są odrzucane, a nie kolejkowane.
 
   Kalibracja porusza ryglem i zapamiętuje jego skrajne położenia; zamek może się na końcu zamknąć.
   Kalibracja w złym położeniu odwraca zamykanie i otwieranie. Wtedy auto-zamknięcie *otwiera* drzwi.
   Uruchamiaj ją tylko przy drzwiach, a potem sprawdź na miejscu oba kierunki.
-
-> W instalacjach sprzed wersji 0.5.0 przycisk *Kalibracja* zostaje włączony. Wyłącz go ręcznie:
-> *Ustawienia → Urządzenia → zamek → Kalibracja → ⚙ → Włączona: wył.*
 
 ## Diagnostyka
 
