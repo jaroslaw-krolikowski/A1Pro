@@ -41,6 +41,11 @@
 </head>
 <body>
 <div id="host" style="max-width: 480px"></div>
+<!-- Floor plan stand-in for picture-elements: the chip is positioned on it. -->
+<div id="plan" style="position: relative; width: 380px; height: 160px; margin-top: 16px; border-radius: 12px;
+     background: linear-gradient(135deg, #8a6a4a 0 55%, #3a3f44 55% 100%);">
+  <div id="chip-host" style="position: absolute; left: 60%; top: 70%; transform: translate(-50%, -50%);"></div>
+</div>
 <script>
   const now = Date.now();
   const iso = (msAgo) => new Date(now - msAgo).toISOString();

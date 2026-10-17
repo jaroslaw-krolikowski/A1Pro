@@ -17,10 +17,18 @@
  * auto_lock_time_entity, mute_entity, refresh_entity, calibrate_entity,
  * signal_entity.
  *
+ * Chip: a small name + state badge for floor plans (picture-elements) and
+ * compact dashboards. A tap opens the same details panel; it never locks or
+ * unlocks by itself.
+ *
+ *   type: custom:raykube-lock-chip
+ *   entity: lock.raykube_a1_ultra_d9f494_zamek
+ *   name: Drzwi                                    # optional
+ *
  * Look follows shadcn/ui; icons are Lucide (https://lucide.dev, ISC license).
  */
 
-const CARD_VERSION = "1.4.0";
+const CARD_VERSION = "1.5.0";
 const HOLD_MS = 500;
 const CONFIRM_MS = 4000;
 const PENDING_TIMEOUT_MS = 20000;
@@ -207,6 +215,11 @@ const EDITOR_LABELS = {
     arming_entity: "Arming mode helper",
     confirm_unlock: "Confirm unlocking with a second tap",
   },
+};
+
+const CHIP_DESCRIPTIONS = {
+  pl: "Mała plakietka z nazwą i stanem zamka, np. na rzut mieszkania; dotknięcie pokazuje szczegóły.",
+  en: "A small badge with the lock name and state, e.g. on a floor plan; a tap shows details.",
 };
 
 const CARD_DESCRIPTIONS = {
@@ -1038,6 +1051,91 @@ class RaykubeLockPanel extends HTMLElement {
   }
 }
 
+
+/** Small name + state badge; a tap opens the details panel. */
+class RaykubeLockChip extends RaykubeLockCard {
+  static getConfigForm() {
+    return {
+      schema: [
+        { name: "entity", required: true, selector: { entity: { domain: "lock" } } },
+        { name: "name", selector: { text: {} } },
+        { name: "confirm_unlock", selector: { boolean: {} } },
+      ],
+      computeLabel: (schema) => (EDITOR_LABELS[uiLanguage()] || EDITOR_LABELS.en)[schema.name],
+    };
+  }
+
+  getCardSize() {
+    return 1;
+  }
+
+  getGridOptions() {
+    return { columns: 6, rows: 1, min_columns: 3, min_rows: 1 };
+  }
+
+  _render() {
+    const hass = this._hass;
+    const t = strings(hass);
+    const stateObj = hass.states[this._config.entity];
+    if (!this._rendered) {
+      this._rendered = true;
+      if (!this.shadowRoot) this.attachShadow({ mode: "open" });
+      this.shadowRoot.innerHTML = `
+        <style>
+          ${SHARED_STYLE}
+          :host { display: inline-block; max-width: 100%; }
+          .chip {
+            display: inline-flex; align-items: center; gap: 10px; max-width: 100%; box-sizing: border-box;
+            padding: 6px 14px 6px 6px; border-radius: var(--rk-radius); cursor: pointer;
+            background: color-mix(in srgb, var(--rk-background) 88%, transparent);
+            border: 1px solid color-mix(in srgb, var(--rk-tone) 45%, transparent);
+            box-shadow: 0 4px 14px rgba(0, 0, 0, .25);
+            -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+            user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
+            transition: transform .12s ease, border-color .15s ease;
+          }
+          .chip:active { transform: scale(.97); }
+          .chip:focus-visible { outline: 2px solid var(--rk-ring); outline-offset: 2px; }
+          .icon { width: 32px; height: 32px; border-radius: 9px; }
+          .text { min-width: 0; line-height: 1.25; }
+          .name {
+            font-size: 13px; font-weight: 600; color: var(--rk-foreground);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+          }
+          .state { font-size: 12px; font-weight: 500; color: var(--rk-tone); white-space: nowrap; }
+        </style>
+        <div class="chip" role="button" tabindex="0">
+          <div class="icon tint"></div>
+          <div class="text"><div class="name"></div><div class="state"></div></div>
+        </div>`;
+      const chip = this.shadowRoot.querySelector(".chip");
+      chip.addEventListener("click", (ev) => {
+        ev.stopPropagation(); // picture-elements must not run its own action
+        this._haptic("light");
+        this._openPanel();
+      });
+      chip.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter" || ev.key === " ") {
+          ev.preventDefault();
+          this._openPanel();
+        }
+      });
+    }
+
+    const chip = this.shadowRoot.querySelector(".chip");
+    const name = this._config.name || stateObj?.attributes?.friendly_name || this._config.entity;
+    const state = stateObj ? stateObj.state : "unavailable";
+    const pending = this.pending;
+    const visual = pending ? { icon: "loader", tone: "pending" } : lockVisual(state);
+    const stateText = pending ? t[pending === "lock" ? "locking" : "unlocking"] : t[state] || state;
+    chip.className = `chip tone-${visual.tone}`;
+    chip.setAttribute("aria-label", `${name}: ${stateText}. ${t.tap_hint}`);
+    chip.querySelector(".icon").innerHTML = icon(visual.icon, 18, visual.icon === "loader" ? "spin" : "");
+    chip.querySelector(".name").textContent = name;
+    chip.querySelector(".state").textContent = stateText;
+  }
+}
+
 if (!customElements.get("raykube-lock-panel")) {
   customElements.define("raykube-lock-panel", RaykubeLockPanel);
 }
@@ -1048,6 +1146,17 @@ if (!customElements.get("raykube-lock-card")) {
     type: "raykube-lock-card",
     name: "Raykube Lock",
     description: CARD_DESCRIPTIONS[uiLanguage()] || CARD_DESCRIPTIONS.en,
+    preview: true,
+    documentationURL: "https://github.com/jaroslaw-krolikowski/A1Pro/blob/master/docs/raykube-a1-pro.md",
+  });
+}
+if (!customElements.get("raykube-lock-chip")) {
+  customElements.define("raykube-lock-chip", RaykubeLockChip);
+  window.customCards = window.customCards || [];
+  window.customCards.push({
+    type: "raykube-lock-chip",
+    name: "Raykube Lock Chip",
+    description: CHIP_DESCRIPTIONS[uiLanguage()] || CHIP_DESCRIPTIONS.en,
     preview: true,
     documentationURL: "https://github.com/jaroslaw-krolikowski/A1Pro/blob/master/docs/raykube-a1-pro.md",
   });

@@ -209,6 +209,39 @@ await page.waitForTimeout(300);
 if (shots) await page.screenshot({ path: path.join(shots, "8-panel-english.png") });
 await page.locator('raykube-lock-panel [data-act="close"]').click();
 
+// Chip for floor plans: name + state, a tap opens the details and never locks/unlocks
+await page.evaluate((id) => {
+  const chip = document.createElement("raykube-lock-chip");
+  chip.setConfig({ entity: id, name: "Drzwi" });
+  const hass = window.makeHass();
+  hass.states[id] = { ...hass.states[id], state: "locked" };
+  chip.hass = hass;
+  document.getElementById("chip-host").appendChild(chip);
+  window.chip = chip;
+}, LOCK);
+const chip = page.locator("raykube-lock-chip .chip");
+assert.equal(await page.locator("raykube-lock-chip .name").textContent(), "Drzwi");
+assert.equal(await page.locator("raykube-lock-chip .state").textContent(), "Zamknięty");
+assert.match(await chip.getAttribute("class"), /tone-locked/);
+await page.waitForTimeout(200);
+if (shots) await page.locator("#plan").screenshot({ path: path.join(shots, "9-chip-locked.png") });
+await page.evaluate((id) => {
+  const hass = window.makeHass();
+  hass.states[id] = { ...hass.states[id], state: "unlocked" };
+  window.chip.hass = hass;
+}, LOCK);
+assert.equal(await page.locator("raykube-lock-chip .state").textContent(), "Otwarty");
+assert.match(await chip.getAttribute("class"), /tone-unlocked/);
+if (shots) await page.locator("#plan").screenshot({ path: path.join(shots, "9b-chip-unlocked.png") });
+await chip.click();
+assert.deepEqual(await calls(), []);
+await page.locator("raykube-lock-panel .stats").waitFor();
+await page.locator('raykube-lock-panel [data-act="lock"]').click();
+assert.deepEqual(await calls(), [["lock", "lock", { entity_id: LOCK }]]);
+assert.equal(await page.locator("raykube-lock-chip .state").textContent(), "Zamykanie…");
+await page.locator('raykube-lock-panel [data-act="close"]').click();
+assert.equal(await page.locator("raykube-lock-panel").count(), 0);
+
 // Bad config is rejected
 const err = await page.evaluate(() => {
   try { document.createElement("raykube-lock-card").setConfig({ entity: "switch.x" }); return null; }
