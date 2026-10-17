@@ -21,7 +21,7 @@
     "step": {
       "init": {
         "title": "Opcje Tuya BLE",
-        "description": "Jak Home Assistant łączy się z zamkiem na baterie, który śpi między komendami (Raykube A1 Pro / A1 Ultra). Inne urządzenia ignorują to ustawienie.",
+        "description": "Jak Home Assistant łączy się z zamkiem na baterie, który śpi między komendami (Raykube A1 Ultra). Inne urządzenia ignorują to ustawienie.",
         "data": {
           "connection_mode": "Tryb połączenia"
         },
@@ -38,7 +38,7 @@
       "fields": {
         "device_id": {
           "name": "Urządzenie",
-          "description": "Urządzenie Raykube A1 Pro (Tuya BLE)."
+          "description": "Urządzenie Raykube A1 Ultra (Tuya BLE)."
         },
         "dp_id": {
           "name": "Numer DP",

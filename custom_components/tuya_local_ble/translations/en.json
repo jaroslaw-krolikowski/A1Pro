@@ -21,7 +21,7 @@
     "step": {
       "init": {
         "title": "Tuya BLE options",
-        "description": "How Home Assistant talks to a battery lock that sleeps between commands (Raykube A1 Pro / A1 Ultra). Other devices ignore this setting.",
+        "description": "How Home Assistant talks to a battery lock that sleeps between commands (Raykube A1 Ultra). Other devices ignore this setting.",
         "data": {
           "connection_mode": "Connection mode"
         },
@@ -47,7 +47,7 @@
       "fields": {
         "device_id": {
           "name": "Device",
-          "description": "Raykube A1 Pro (Tuya BLE) device."
+          "description": "Raykube A1 Ultra (Tuya BLE) device."
         },
         "dp_id": {
           "name": "DP id",

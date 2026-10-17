@@ -1,10 +1,10 @@
-"""Raykube A1 Pro / A1 Pro Max / A1 Ultra settings datapoints.
+"""Raykube A1 Ultra settings datapoints.
 
 DP numbers follow the jtmspro schema of these locks (Tuya cloud DP list of
 hc7n0urm, the tuya-local `raykube_a1promax_lock` profile and the hc7n0urm
 status snapshot decoded in ShonP40/Tuya-BLE PR #39). Every DP id and the
 volume levels can be overridden per device with a `raykube` block in
-`tuya_local_ble/devices.json`; see docs/raykube-a1-pro.md.
+`tuya_local_ble/devices.json`; see docs/raykube-a1-ultra.md.
 """
 from __future__ import annotations
 

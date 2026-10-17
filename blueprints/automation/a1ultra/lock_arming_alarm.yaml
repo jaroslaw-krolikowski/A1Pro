@@ -18,13 +18,13 @@ blueprint:
 
 
     Wymaga szybkiego trybu połączenia / Needs a fast connection mode:
-    Raykube A1 Pro (Tuya BLE) > Konfiguruj / Configure > Tryb połączenia / Connection
+    Raykube A1 Ultra (Tuya BLE) > Konfiguruj / Configure > Tryb połączenia / Connection
     mode > "Stałe połączenie (24/7)" / "Permanent connection (24/7)" albo /
     or "Po zmianie rozgłaszania" / "On advertisement change". Konfiguracja
     telefonu / phone setup:
-    docs/raykube-a1-pro.md (PL), docs/raykube-a1-pro.en.md (EN).
+    docs/raykube-a1-ultra.md (PL), docs/raykube-a1-ultra.en.md (EN).
   domain: automation
-  source_url: https://github.com/jaroslaw-krolikowski/A1Pro/blob/master/blueprints/automation/a1pro/lock_arming_alarm.yaml
+  source_url: https://github.com/jaroslaw-krolikowski/raykube-a1-ultra-integration/blob/master/blueprints/automation/a1ultra/lock_arming_alarm.yaml
   input:
     lock_entity:
       name: Zamek / Lock

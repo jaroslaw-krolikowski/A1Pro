@@ -1,6 +1,6 @@
-# Raykube A1 Pro / A1 Pro Max / A1 Ultra in Home Assistant (local, over BLE)
+# Raykube A1 Ultra in Home Assistant (local, over BLE)
 
-🇵🇱 Wersja polska: [raykube-a1-pro.md](raykube-a1-pro.md)
+🇵🇱 Wersja polska: [raykube-a1-ultra.md](raykube-a1-ultra.md)
 
 This fork of [ShonP40/Tuya-BLE](https://github.com/ShonP40/Tuya-BLE) adds the full set of settings of
 Raykube locks (`jtmspro`, `hc7n0urm` and `rlyxv7pe`) to Home Assistant.
@@ -35,13 +35,13 @@ This fork sends it as `enum`.
 
 ## Installation
 
-1. HACS → Integrations → ⋮ menu → *Custom repositories* → `https://github.com/jaroslaw-krolikowski/A1Pro`, category *Integration*.
+1. HACS → Integrations → ⋮ menu → *Custom repositories* → `https://github.com/jaroslaw-krolikowski/raykube-a1-ultra-integration`, category *Integration*.
    Or manually: copy `custom_components/tuya_local_ble` to `config/custom_components/`.
 2. The fork uses the same domain (`tuya_local_ble`) as ShonP40/Tuya-BLE, so it **replaces** the original.
    If the original is installed, remove it from HACS (keep the integration entry and `devices.json`) and install the fork.
 3. Fill in `config/tuya_local_ble/devices.json` (below) and restart HA.
 4. The lock shows up as discovered in *Settings → Devices & services*. You can also add it manually:
-   *Add integration → Raykube A1 Pro (Tuya BLE)* and pick the lock from the list.
+   *Add integration → Raykube A1 Ultra (Tuya BLE)* and pick the lock from the list.
 
 If adding it says that HA does not see any Tuya BLE device, Bluetooth in HA does not see the lock.
 The usual causes:
@@ -65,8 +65,8 @@ MAC address in the file.
     "device_id": "<device_id>",
     "category": "jtmspro",
     "product_id": "hc7n0urm",
-    "device_name": "Raykube A1 Pro",
-    "product_model": "A1 Pro",
+    "device_name": "Raykube A1 Ultra",
+    "product_model": "A1 Ultra",
     "product_name": "Smart lock",
     "ble_unlock_check": "<base64 from Tuya Cloud>",
     "raykube": {
@@ -212,7 +212,7 @@ state change: a change reported by the lock itself has no user or automation att
 ### Setup
 
 1. **Choose the connection mode.**
-   *Settings → Devices & services → Raykube A1 Pro (Tuya BLE)* → **⋮** menu next to the lock (or the cog icon)
+   *Settings → Devices & services → Raykube A1 Ultra (Tuya BLE)* → **⋮** menu next to the lock (or the cog icon)
    → **Options** / **Configure** → **Connection mode** → **Submit**. The integration reloads by itself.
 
    | Mode | A manual unlock shows up after | Lock battery |
@@ -247,8 +247,8 @@ state change: a change reported by the lock itself has no user or automation att
    e.g. "Lock armed" (`input_boolean.lock_armed`). This is the arming mode switch.
    You can add it to the *Raykube Lock* card (`arming_entity`), to a dashboard, or turn it on from an automation.
 5. **Import the blueprint:** *Settings → Automations & scenes → Blueprints → Import blueprint* and paste
-   `https://github.com/jaroslaw-krolikowski/A1Pro/blob/master/blueprints/automation/a1pro/lock_arming_alarm.yaml`.
-   You can also copy the file to `config/blueprints/automation/a1pro/`.
+   `https://github.com/jaroslaw-krolikowski/raykube-a1-ultra-integration/blob/master/blueprints/automation/a1ultra/lock_arming_alarm.yaml`.
+   You can also copy the file to `config/blueprints/automation/a1ultra/`.
 6. **Create an automation from the blueprint:** pick the lock and the helper. In the **Notification** field
    switch to YAML mode (**⋮ → Edit in YAML**) and paste the action for your phone. Replace
    `mobile_app_your_phone` with the name from step 2. Tapping the notification opens the HA dashboard;
@@ -297,7 +297,7 @@ state change: a change reported by the lock itself has no user or automation att
 
 ## Diagnostics
 
-The device page (*Settings → Devices & services → Raykube A1 Pro (Tuya BLE) → the lock*) has two sensors in its
+The device page (*Settings → Devices & services → Raykube A1 Ultra (Tuya BLE) → the lock*) has two sensors in its
 *Diagnostic* section and a **Download diagnostics** button in the **⋮** menu.
 
 ### "Connection" sensor
@@ -365,7 +365,7 @@ the last 3 bytes of the MAC address are kept. The file is safe to attach to a bu
 3. In the *Datapoints* sensor check that *Last report* is fresh and look at `dp_47_lock_motor_state`:
    `false` means locked, `true` unlocked.
 
-The debug log has every frame: *Raykube A1 Pro (Tuya BLE) → ⋮ → Enable debug logging*.
+The debug log has every frame: *Raykube A1 Ultra (Tuya BLE) → ⋮ → Enable debug logging*.
 Look for lines like `Received FD50 V4 datapoint update, id: 47, …, value: False`.
 
 ## DP change history

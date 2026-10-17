@@ -1147,7 +1147,7 @@ if (!customElements.get("raykube-lock-card")) {
     name: "Raykube Lock",
     description: CARD_DESCRIPTIONS[uiLanguage()] || CARD_DESCRIPTIONS.en,
     preview: true,
-    documentationURL: "https://github.com/jaroslaw-krolikowski/A1Pro/blob/master/docs/raykube-a1-pro.md",
+    documentationURL: "https://github.com/jaroslaw-krolikowski/raykube-a1-ultra-integration/blob/master/docs/raykube-a1-ultra.md",
   });
 }
 if (!customElements.get("raykube-lock-chip")) {
@@ -1158,7 +1158,7 @@ if (!customElements.get("raykube-lock-chip")) {
     name: "Raykube Lock Chip",
     description: CHIP_DESCRIPTIONS[uiLanguage()] || CHIP_DESCRIPTIONS.en,
     preview: true,
-    documentationURL: "https://github.com/jaroslaw-krolikowski/A1Pro/blob/master/docs/raykube-a1-pro.md",
+    documentationURL: "https://github.com/jaroslaw-krolikowski/raykube-a1-ultra-integration/blob/master/docs/raykube-a1-ultra.md",
   });
   console.info(`%c RAYKUBE-LOCK-CARD %c ${CARD_VERSION} `,
     "color:#fff;background:#10b981;font-weight:700", "color:#10b981");
