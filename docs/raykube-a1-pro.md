@@ -167,6 +167,28 @@ puste pole czasu). Przycisk **Odśwież** pobiera je z zamka.
 
 Po aktualizacji integracji odśwież stronę albo aplikację HA, żeby wczytać nową wersję karty.
 
+### Plakietka „Raykube Lock Chip” (np. na rzut mieszkania)
+
+Mała plakietka z ikoną, nazwą i stanem zamka (zielona: zamknięty, pomarańczowa: otwarty, niebieska:
+w trakcie, szara: nieznany). Stuknięcie otwiera ten sam panel szczegółów co karta. Sama plakietka
+nigdy nie zamyka ani nie otwiera zamka; robią to przyciski w panelu (otwarcie z potwierdzeniem).
+
+Na interaktywnym rzucie (karta *Obraz z elementami* / `picture-elements`):
+
+```yaml
+type: picture-elements
+image: /local/rzut.png
+elements:
+  - type: custom:raykube-lock-chip
+    entity: lock.raykube_a1_ultra_d9f494_zamek
+    name: Drzwi               # opcjonalnie
+    style:
+      left: 38%               # położenie środka plakietki na obrazie
+      top: 92%
+```
+
+Można ją też dodać jako zwykłą małą kartę: *Dodaj kartę →* **Raykube Lock Chip**.
+
 ## Tryb uzbrojenia (powiadomienie w Home Assistant)
 
 Zamek nie ma własnego trybu uzbrojenia (sprawdzone na pełnym modelu DP `hc7n0urm`), więc tryb uzbrojenia

@@ -171,6 +171,28 @@ The **Refresh** button reads them from the lock.
 
 After updating the integration, reload the page or the HA app to load the new card version.
 
+### "Raykube Lock Chip" badge (e.g. on a floor plan)
+
+A small badge with the lock icon, name and state (green: locked, orange: unlocked, blue: in progress,
+grey: unknown). A tap opens the same details panel as the card. The badge itself never locks or
+unlocks; the buttons in the panel do (unlocking with confirmation).
+
+On an interactive floor plan (*Picture elements* card / `picture-elements`):
+
+```yaml
+type: picture-elements
+image: /local/floor-plan.png
+elements:
+  - type: custom:raykube-lock-chip
+    entity: lock.raykube_a1_ultra_d9f494_lock
+    name: Door                # optional
+    style:
+      left: 38%               # position of the badge centre on the image
+      top: 92%
+```
+
+It also works as a regular small card: *Add card →* **Raykube Lock Chip**.
+
 ## Arming mode (notification in Home Assistant)
 
 The lock has no arming mode of its own (checked against the full `hc7n0urm` DP model), so arming mode
